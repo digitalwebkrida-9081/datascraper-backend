@@ -1,0 +1,1 @@
+{"indexes":[{"v":{"$numberInt":"2"},"key":{"_id":{"$numberInt":"1"}},"name":"_id_"},{"v":{"$numberInt":"2"},"unique":true,"key":{"isoCode":{"$numberInt":"1"},"countryCode":{"$numberInt":"1"}},"name":"isoCode_1_countryCode_1"}],"uuid":"92f620cb69d84aa58eddc96afdfdc54a","collectionName":"states","type":"collection"}
