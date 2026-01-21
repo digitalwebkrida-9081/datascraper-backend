@@ -1,0 +1,19 @@
+[
+  {
+    "_id": "697073895dee084c411a6db1",
+    "place_id": "ChIJ____z5PdDDkRuwSAgjU9pg0",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:34:49.314Z",
+    "full_address": "Industrial Plot No. 1, near Metro Station, HBH Colony, Sector 28, Faridabad, Haryana 121008, India",
+    "latitude": 28.4346231,
+    "longitude": 77.31158429999999,
+    "name": "Shahi Exports Private Limited",
+    "phone_number": "0129 428 8000",
+    "photos_sample": [],
+    "query": "Garment Exporters",
+    "rating": 4.2,
+    "review_count": 611,
+    "type": "point_of_interest",
+    "website": "https://www.shahi.co.in/"
+  }
+]

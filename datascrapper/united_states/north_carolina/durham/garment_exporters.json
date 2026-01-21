@@ -1,0 +1,53 @@
+[
+  {
+    "_id": "69707c865dee084c411a73c5",
+    "place_id": "ChIJ3b_7lMrlrIkR9ajicf_kS4U",
+    "__v": 0,
+    "createdAt": "2026-01-21T07:13:10.331Z",
+    "full_address": "3023 Fayetteville St, Durham, NC 27707, USA",
+    "latitude": 35.963127,
+    "longitude": -78.9075951,
+    "name": "BullCity Apparel & Customs",
+    "phone_number": "(919) 237-3876",
+    "photos_sample": [],
+    "query": "Garment Exporters",
+    "rating": 4.8,
+    "review_count": 41,
+    "type": "clothing_store",
+    "website": "http://www.thebullcitystore.com/"
+  },
+  {
+    "_id": "69707c865dee084c411a73c7",
+    "place_id": "ChIJw1l63cDirIkR1rMBetJm-Ws",
+    "__v": 0,
+    "createdAt": "2026-01-21T07:13:10.332Z",
+    "full_address": "3500 Industrial Dr, Durham, NC 27704, USA",
+    "latitude": 36.0636637,
+    "longitude": -78.85687120000001,
+    "name": "Freudenberg Performance Materials LP",
+    "phone_number": "(919) 620-3900",
+    "photos_sample": [],
+    "query": "Garment Exporters",
+    "rating": 3.6,
+    "review_count": 9,
+    "type": "point_of_interest",
+    "website": "http://www.nonwovens-group.com/"
+  },
+  {
+    "_id": "69707c865dee084c411a73c9",
+    "place_id": "ChIJ7cpUgJTlrIkREiUzw7cAtTw",
+    "__v": 0,
+    "createdAt": "2026-01-21T07:13:10.334Z",
+    "full_address": "4841 Industry Ln Suite C, Durham, NC 27713, USA",
+    "latitude": 35.9374926,
+    "longitude": -78.9035732,
+    "name": "Fully Promoted Durham, NC",
+    "phone_number": "(919) 316-1538",
+    "photos_sample": [],
+    "query": "Garment Exporters",
+    "rating": 5,
+    "review_count": 81,
+    "type": "point_of_interest",
+    "website": "https://fullypromoted.com/locations/durham-nc"
+  }
+]

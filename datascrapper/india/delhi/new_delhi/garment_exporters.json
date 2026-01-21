@@ -1,0 +1,52 @@
+[
+  {
+    "_id": "697073895dee084c411a6dad",
+    "place_id": "ChIJVVVVFU7hDDkRG5Xx6A2EuEY",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:34:49.310Z",
+    "full_address": "B-127, Pocket B, Okhla Phase I, Okhla Industrial Estate, New Delhi, Delhi 110020, India",
+    "latitude": 28.528927699999997,
+    "longitude": 77.2821926,
+    "name": "Maya Exports Corporation",
+    "phone_number": "011 2681 1608",
+    "photos_sample": [],
+    "query": "Garment Exporters",
+    "rating": 4.2,
+    "review_count": 10,
+    "type": "point_of_interest"
+  },
+  {
+    "_id": "697073895dee084c411a6db3",
+    "place_id": "ChIJIwto6jgDDTkRu83G3x3i3CQ",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:34:49.318Z",
+    "full_address": "A/41, Block A, Mayapuri Industrial Area Phase I, Mayapuri, New Delhi, Delhi, 110064, India",
+    "latitude": 28.630410599999998,
+    "longitude": 77.1271694,
+    "name": "Richa Global Exports Pvt Ltd",
+    "phone_number": "099908 62861",
+    "photos_sample": [],
+    "query": "Garment Exporters",
+    "rating": 4.1,
+    "review_count": 59,
+    "type": "point_of_interest",
+    "website": "https://www.richaglobal.com/"
+  },
+  {
+    "_id": "697073895dee084c411a6dbb",
+    "place_id": "ChIJq6r6LunjDDkRKmkNzbI2VW4",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:34:49.327Z",
+    "full_address": "Flatted Factory Complex, B-60 & 61, Complex, Okhla Phase III, Okhla, New Delhi, Delhi 110020, India",
+    "latitude": 28.551308,
+    "longitude": 77.2687564,
+    "name": "GEMA",
+    "phone_number": "0124 411 9645",
+    "photos_sample": [],
+    "query": "Garment Exporters",
+    "rating": 3,
+    "review_count": 4,
+    "type": "corporate_office",
+    "website": "http://gema.co.in/"
+  }
+]

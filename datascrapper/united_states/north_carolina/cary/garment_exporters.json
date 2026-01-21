@@ -1,0 +1,36 @@
+[
+  {
+    "_id": "697073895dee084c411a6dab",
+    "place_id": "ChIJCU4-93vxrIkR80PczuUI4pw",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:34:49.307Z",
+    "full_address": "6399 Weston Pkwy, Cary, NC 27513, USA",
+    "latitude": 35.8287033,
+    "longitude": -78.78675249999999,
+    "name": "Cotton Incorporated",
+    "phone_number": "(919) 678-2220",
+    "photos_sample": [],
+    "query": "Garment Exporters",
+    "rating": 4.5,
+    "review_count": 17,
+    "type": "point_of_interest",
+    "website": "http://cottoninc.com/"
+  },
+  {
+    "_id": "69707c865dee084c411a73cd",
+    "place_id": "ChIJlwIKSrrtrIkRPe5WL-j2q-E",
+    "__v": 0,
+    "createdAt": "2026-01-21T07:13:10.337Z",
+    "full_address": "1017 Queensdale Dr, Cary, NC 27519, USA",
+    "latitude": 35.820886,
+    "longitude": -78.9259513,
+    "name": "Stitch Vendor",
+    "phone_number": "(919) 771-5764",
+    "photos_sample": [],
+    "query": "Garment Exporters",
+    "rating": 5,
+    "review_count": 1,
+    "type": "store",
+    "website": "https://stitchvendor.com/"
+  }
+]

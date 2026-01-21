@@ -1,0 +1,16 @@
+[
+  {
+    "_id": "697073895dee084c411a6d9b",
+    "place_id": "ChIJ__vzU4dNrIkR6R4xVHBkbm8",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:34:49.284Z",
+    "full_address": "Copper Beech Ln, Wake Forest, NC 27587, USA",
+    "latitude": 35.977532599999996,
+    "longitude": -78.4651035,
+    "name": "Zahri Group of Industries",
+    "photos_sample": [],
+    "query": "Garment Exporters",
+    "type": "point_of_interest",
+    "website": "https://www.zahrigroup.com/"
+  }
+]

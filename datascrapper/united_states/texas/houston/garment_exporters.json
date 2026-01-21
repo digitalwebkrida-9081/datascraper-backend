@@ -1,0 +1,36 @@
+[
+  {
+    "_id": "697073895dee084c411a6d9d",
+    "place_id": "ChIJ_4XbdlGVQIYRRErREBbmIpo",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:34:49.287Z",
+    "full_address": "2722 Holmes Rd, Houston, TX 77054, USA",
+    "latitude": 29.669721600000003,
+    "longitude": -95.3885421,
+    "name": "American International Exports",
+    "phone_number": "(713) 791-9933",
+    "photos_sample": [],
+    "query": "Garment Exporters",
+    "rating": 3.9,
+    "review_count": 34,
+    "type": "point_of_interest",
+    "website": "http://www.americaninternationalexport.com/"
+  },
+  {
+    "_id": "697073895dee084c411a6da9",
+    "place_id": "ChIJNbHG_3u8QIYR43S_ah8WEqk",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:34:49.305Z",
+    "full_address": "8570 Market St, Houston, TX 77029, USA",
+    "latitude": 29.7700757,
+    "longitude": -95.27167399999999,
+    "name": "American Textile Export",
+    "phone_number": "(713) 674-1611",
+    "photos_sample": [],
+    "query": "Garment Exporters",
+    "rating": 3.3,
+    "review_count": 21,
+    "type": "point_of_interest",
+    "website": "http://www.americantextileexport.com/"
+  }
+]

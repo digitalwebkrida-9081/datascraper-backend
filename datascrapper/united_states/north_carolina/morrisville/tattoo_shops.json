@@ -1,0 +1,35 @@
+[
+  {
+    "_id": "697077825dee084c411a7073",
+    "place_id": "ChIJp65kd3PzrIkR1IecLPKYZXU",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:51:46.174Z",
+    "full_address": "1901 NW Cary Pkwy BLDG 108 SUITE #112, Morrisville, NC 27560, USA",
+    "latitude": 35.8090556,
+    "longitude": -78.8102593,
+    "name": "Allie Bloom Tattoos",
+    "phone_number": "(919) 297-8611",
+    "photos_sample": [],
+    "query": "Tattoo shops",
+    "rating": 5,
+    "review_count": 10,
+    "type": "body_art_service",
+    "website": "https://www.instagram.com/alliebloomtattoos"
+  },
+  {
+    "_id": "697077825dee084c411a7089",
+    "place_id": "ChIJXwXewrjzrIkRfsnjPZDsPGk",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:51:46.240Z",
+    "full_address": "9908 Chapel Hill Rd, Morrisville, NC 27560, USA",
+    "latitude": 35.814355,
+    "longitude": -78.8199034,
+    "name": "Yokai Ink Studio",
+    "photos_sample": [],
+    "query": "Tattoo shops",
+    "rating": 4.9,
+    "review_count": 51,
+    "type": "body_art_service",
+    "website": "http://yokaiinkstudio.com/"
+  }
+]

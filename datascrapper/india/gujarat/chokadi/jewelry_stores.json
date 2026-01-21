@@ -1,0 +1,18 @@
+[
+  {
+    "_id": "69707d955dee084c411a7589",
+    "place_id": "ChIJ3Rxql74kWTkRrNCwLfEURAA",
+    "__v": 0,
+    "createdAt": "2026-01-21T07:17:41.980Z",
+    "full_address": "Chuda, Main Bajar, Bhootnath, Darbargadh, Chokadi, Chuda, Gujarat 363410, India",
+    "latitude": 22.4816488,
+    "longitude": 71.6859295,
+    "name": "AKASH JEWELLERS",
+    "phone_number": "099242 49475",
+    "photos_sample": [],
+    "query": "Jewelry stores",
+    "rating": 4.6,
+    "review_count": 16,
+    "type": "jewelry_store"
+  }
+]

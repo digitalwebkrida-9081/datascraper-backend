@@ -1,0 +1,18 @@
+[
+  {
+    "_id": "69707d965dee084c411a75d3",
+    "place_id": "ChIJXzpUowcxYDkRQLvnQ9AVFsA",
+    "__v": 0,
+    "createdAt": "2026-01-21T07:17:42.044Z",
+    "full_address": "Pancholi Faliya, near, Char Rasta, Parshi Fariya, Kavant, Gujarat 391170, India",
+    "latitude": 22.0934196,
+    "longitude": 74.0532626,
+    "name": "Babadev Jewellers",
+    "phone_number": "082386 75379",
+    "photos_sample": [],
+    "query": "Jewelry stores",
+    "rating": 5,
+    "review_count": 12,
+    "type": "jewelry_store"
+  }
+]

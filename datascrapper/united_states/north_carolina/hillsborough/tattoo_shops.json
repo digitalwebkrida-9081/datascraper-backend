@@ -1,0 +1,19 @@
+[
+  {
+    "_id": "697077825dee084c411a7069",
+    "place_id": "ChIJ6SR7vaPe60kRmw4hhWS9YBs",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:51:46.161Z",
+    "full_address": "210 Orange Grv St, Hillsborough, NC 27278, USA",
+    "latitude": 36.0651,
+    "longitude": -79.09957,
+    "name": "Picassomoesllc",
+    "phone_number": "(336) 212-5350",
+    "photos_sample": [],
+    "query": "Tattoo shops",
+    "rating": 4.9,
+    "review_count": 146,
+    "type": "body_art_service",
+    "website": "http://picassomoes.com/"
+  }
+]

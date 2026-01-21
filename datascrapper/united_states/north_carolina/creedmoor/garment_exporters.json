@@ -1,0 +1,17 @@
+[
+  {
+    "_id": "697073895dee084c411a6dc5",
+    "place_id": "ChIJHd2IoGUBrYkR8NAlrSWQMU8",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:34:49.337Z",
+    "full_address": "1179 Ridgeland Dr, Creedmoor, NC 27522, USA",
+    "latitude": 36.115806299999996,
+    "longitude": -78.73299,
+    "name": "Oh-nine Brooklyn Tees llc",
+    "phone_number": "(347) 851-0102",
+    "photos_sample": [],
+    "query": "Garment Exporters",
+    "type": "point_of_interest",
+    "website": "https://09bktees.com/"
+  }
+]

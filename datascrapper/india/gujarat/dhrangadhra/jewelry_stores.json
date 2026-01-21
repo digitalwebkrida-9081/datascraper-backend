@@ -1,0 +1,34 @@
+[
+  {
+    "_id": "69707d955dee084c411a757d",
+    "place_id": "ChIJuQ90IKRjWTkRmFVXMkycs1U",
+    "__v": 0,
+    "createdAt": "2026-01-21T07:17:41.968Z",
+    "full_address": "Nani Bazar, Surendranagar, Dhrangadhra, Gujarat 363310, India",
+    "latitude": 22.9942593,
+    "longitude": 71.4667784,
+    "name": "Nilkanth Jewellers - The Best Place to Buy Gold and Silver Jewellery",
+    "phone_number": "097254 24413",
+    "photos_sample": [],
+    "query": "Jewelry stores",
+    "rating": 5,
+    "review_count": 24,
+    "type": "jewelry_store"
+  },
+  {
+    "_id": "69707d965dee084c411a75d7",
+    "place_id": "ChIJQ8TyZDBiWTkRCfZitdrQePc",
+    "__v": 0,
+    "createdAt": "2026-01-21T07:17:42.046Z",
+    "full_address": "Green Chowk, Dhrangadhra, Gujarat 363310, India",
+    "latitude": 22.994284399999998,
+    "longitude": 71.46587819999999,
+    "name": "MN JEWELLERS",
+    "phone_number": "097129 79009",
+    "photos_sample": [],
+    "query": "Jewelry stores",
+    "rating": 4.9,
+    "review_count": 27,
+    "type": "jewelry_store"
+  }
+]

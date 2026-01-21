@@ -1,0 +1,36 @@
+[
+  {
+    "_id": "697073895dee084c411a6da5",
+    "place_id": "ChIJRYyMMFEGqTsROdhzx1lB9iM",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:34:49.298Z",
+    "full_address": "2/31, Nethaji Street East, Kumaranthapuram, Kumarnathapuram, Tiruppur, Tamil Nadu 641602, India",
+    "latitude": 11.12546,
+    "longitude": 77.33899199999999,
+    "name": "Vogue Sourcing",
+    "phone_number": "093676 55677",
+    "photos_sample": [],
+    "query": "Garment Exporters",
+    "rating": 3.7,
+    "review_count": 60,
+    "type": "clothing_store",
+    "website": "https://www.voguesourcing.in/latest-updates/1"
+  },
+  {
+    "_id": "697073895dee084c411a6db5",
+    "place_id": "ChIJ_cRIuNVZqDsRNZAHwXSDUGQ",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:34:49.320Z",
+    "full_address": "SF No. 378, Thangam Industrial Park, 2nd Street, Bankers Colony Road, Dharapuram - Tiruppur Rd, K Chettipalayam, Tiruppur, Tamil Nadu 641604, India",
+    "latitude": 11.072365099999999,
+    "longitude": 77.37806690000001,
+    "name": "Varthagam International",
+    "phone_number": "063791 32199",
+    "photos_sample": [],
+    "query": "Garment Exporters",
+    "rating": 4.7,
+    "review_count": 116,
+    "type": "clothing_store",
+    "website": "https://www.varthagaminternational.com/"
+  }
+]

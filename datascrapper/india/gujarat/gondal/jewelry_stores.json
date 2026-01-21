@@ -1,0 +1,19 @@
+[
+  {
+    "_id": "69707d965dee084c411a75cf",
+    "place_id": "ChIJ55z8-5g4WDkRwaOl3DAC3Sg",
+    "__v": 0,
+    "createdAt": "2026-01-21T07:17:42.041Z",
+    "full_address": "Moti Bazar Rd, Darbargardh, Bargati Pura, Gondal, Gujarat 360311, India",
+    "latitude": 21.9625123,
+    "longitude": 70.80346999999999,
+    "name": "Nandish Jewellers",
+    "phone_number": "080001 04444",
+    "photos_sample": [],
+    "query": "Jewelry stores",
+    "rating": 4.9,
+    "review_count": 139,
+    "type": "jewelry_store",
+    "website": "https://www.nandish.in/"
+  }
+]

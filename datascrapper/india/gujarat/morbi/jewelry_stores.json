@@ -1,0 +1,35 @@
+[
+  {
+    "_id": "69707d955dee084c411a755d",
+    "place_id": "ChIJxSHztbyNWTkRVV35yhh0Sko",
+    "__v": 0,
+    "createdAt": "2026-01-21T07:17:41.926Z",
+    "full_address": "Aashapura Arcade, Ram Chowk, Sanala Rd, opp. Kotak Bank, Shakti Plot, Sardar Nagar, Morbi, Gujarat 363641, India",
+    "latitude": 22.8136229,
+    "longitude": 70.8304828,
+    "name": "Tanishq Jewellery - Morbi - Sanala Road",
+    "phone_number": "02822 221 222",
+    "photos_sample": [],
+    "query": "Jewelry stores",
+    "rating": 4.9,
+    "review_count": 2256,
+    "type": "jewelry_store",
+    "website": "https://stores.tanishq.co.in/store-locator/jewellery-stores/gujarat/morbi-sanalaroad/MRB"
+  },
+  {
+    "_id": "69707d955dee084c411a7571",
+    "place_id": "ChIJs45hdVSNWTkRJpZGO69PaNc",
+    "__v": 0,
+    "createdAt": "2026-01-21T07:17:41.953Z",
+    "full_address": "first floor, bhanu plaza, Sanala Rd, near new bus stand, Swastik Society, Sardar Nagar, Morbi, Gujarat 363641, India",
+    "latitude": 22.8086563,
+    "longitude": 70.82462869999999,
+    "name": "𝗹𝗮𝘃𝗶𝘀𝗵 𝗷𝗲𝘄𝗲𝗹𝗹𝗲𝗿𝘆 𝗵𝗼𝘂𝘀𝗲 - Best Silver Shop in Morbi",
+    "phone_number": "099092 89092",
+    "photos_sample": [],
+    "query": "Jewelry stores",
+    "rating": 5,
+    "review_count": 86,
+    "type": "jewelry_store"
+  }
+]

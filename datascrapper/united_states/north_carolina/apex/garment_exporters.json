@@ -1,0 +1,19 @@
+[
+  {
+    "_id": "69707c865dee084c411a73d3",
+    "place_id": "ChIJG_AVvyqTrIkR26mrq8vGkXM",
+    "__v": 0,
+    "createdAt": "2026-01-21T07:13:10.342Z",
+    "full_address": "1555 Beaver Creek Commons Dr, Apex, NC 27502, USA",
+    "latitude": 35.7447249,
+    "longitude": -78.8867423,
+    "name": "Uptown Cheapskate Apex",
+    "phone_number": "(919) 363-2227",
+    "photos_sample": [],
+    "query": "Garment Exporters",
+    "rating": 4.5,
+    "review_count": 488,
+    "type": "discount_store",
+    "website": "https://uptowncheapskate.com/location/apex"
+  }
+]

@@ -1,0 +1,19 @@
+[
+  {
+    "_id": "697073895dee084c411a6d99",
+    "place_id": "ChIJR1VVFUIZDTkR06vFbbEHIbk",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:34:49.276Z",
+    "full_address": "SDM Office 105-106 Sector 20, 105, Udyog Vihar II Rd, Udyog Vihar Phase 1, Udyog Vihar, Sector 20, Gurugram, Haryana 122016, India",
+    "latitude": 28.516642899999997,
+    "longitude": 77.0819175,
+    "name": "Modelama Exports Private Limited",
+    "phone_number": "098188 99260",
+    "photos_sample": [],
+    "query": "Garment Exporters",
+    "rating": 4.2,
+    "review_count": 78,
+    "type": "point_of_interest",
+    "website": "https://www.modelama.com/"
+  }
+]

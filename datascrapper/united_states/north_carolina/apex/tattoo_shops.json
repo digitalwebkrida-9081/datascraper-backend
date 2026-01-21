@@ -1,0 +1,19 @@
+[
+  {
+    "_id": "697077825dee084c411a7055",
+    "place_id": "ChIJaZA-6KKSrIkRydTpHcc44pA",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:51:46.137Z",
+    "full_address": "500 E Williams St, Apex, NC 27502, USA",
+    "latitude": 35.7237059,
+    "longitude": -78.8486001,
+    "name": "Apex Tattoo Factory",
+    "phone_number": "(919) 924-7778",
+    "photos_sample": [],
+    "query": "Tattoo shops",
+    "rating": 4.8,
+    "review_count": 347,
+    "type": "art_studio",
+    "website": "http://www.apextattoofactory.com/"
+  }
+]

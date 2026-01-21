@@ -1,0 +1,19 @@
+[
+  {
+    "_id": "697077825dee084c411a7083",
+    "place_id": "ChIJMS9G-wTDrIkRaLcleHsgvYA",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:51:46.235Z",
+    "full_address": "309 W Weaver St # 400, Carrboro, NC 27510, USA",
+    "latitude": 35.9106442,
+    "longitude": -79.0750595,
+    "name": "Dragonhide Tattoo Co.",
+    "phone_number": "(954) 551-4113",
+    "photos_sample": [],
+    "query": "Tattoo shops",
+    "rating": 5,
+    "review_count": 51,
+    "type": "body_art_service",
+    "website": "http://www.leifolsonart.com/"
+  }
+]

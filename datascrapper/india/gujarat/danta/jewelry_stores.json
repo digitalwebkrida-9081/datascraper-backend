@@ -1,0 +1,18 @@
+[
+  {
+    "_id": "69707d965dee084c411a75cb",
+    "place_id": "ChIJeXRohNYdXTkRLwIx-5DbSZc",
+    "__v": 0,
+    "createdAt": "2026-01-21T07:17:42.039Z",
+    "full_address": "near Bus Station, Danta, Gujarat 385120, India",
+    "latitude": 24.1895609,
+    "longitude": 72.7630963,
+    "name": "Parsani Jewellers || Best Gold And Silver Jewellery Showroom",
+    "phone_number": "098750 10740",
+    "photos_sample": [],
+    "query": "Jewelry stores",
+    "rating": 4.9,
+    "review_count": 12,
+    "type": "jewelry_store"
+  }
+]

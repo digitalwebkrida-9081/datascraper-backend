@@ -1,0 +1,36 @@
+[
+  {
+    "_id": "697077825dee084c411a7091",
+    "place_id": "ChIJXVDvx-Bqq4kRSo1CBd2Lz54",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:51:46.247Z",
+    "full_address": "5439 Yadkin Rd #118, Fayetteville, NC 28303, USA",
+    "latitude": 35.0865187,
+    "longitude": -78.9788305,
+    "name": "American Tattoo Society of Fayetteville",
+    "phone_number": "(910) 867-2726",
+    "photos_sample": [],
+    "query": "Tattoo shops",
+    "rating": 4.8,
+    "review_count": 1608,
+    "type": "body_art_service",
+    "website": "http://www.americantattoosociety.com/"
+  },
+  {
+    "_id": "697077825dee084c411a70c7",
+    "place_id": "ChIJifkDB9UUq4kRQ1vgIHM0hHc",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:51:46.289Z",
+    "full_address": "5924 Cliffdale Rd, Fayetteville, NC 28314, USA",
+    "latitude": 35.059803099999996,
+    "longitude": -78.9712845,
+    "name": "Evolution Ink Studio",
+    "phone_number": "(910) 323-2243",
+    "photos_sample": [],
+    "query": "Tattoo shops",
+    "rating": 4.9,
+    "review_count": 4561,
+    "type": "body_art_service",
+    "website": "https://evolutioninkstudio.com/"
+  }
+]

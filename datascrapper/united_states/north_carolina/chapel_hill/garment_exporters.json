@@ -1,0 +1,34 @@
+[
+  {
+    "_id": "69707c865dee084c411a73a5",
+    "place_id": "ChIJYfeaTd3CrIkR-QlQOMxXypE",
+    "__v": 0,
+    "createdAt": "2026-01-21T07:13:10.225Z",
+    "full_address": "173 E Franklin St, Chapel Hill, NC 27514, USA",
+    "latitude": 35.914286,
+    "longitude": -79.0534186,
+    "name": "Apparel Sourcing Group",
+    "phone_number": "(336) 689-3842",
+    "photos_sample": [],
+    "query": "Garment Exporters",
+    "type": "consultant",
+    "website": "http://apparelsourcinggroup.com/"
+  },
+  {
+    "_id": "69707c865dee084c411a73d1",
+    "place_id": "ChIJq437YN3CrIkR3eIL5lfyClc",
+    "__v": 0,
+    "createdAt": "2026-01-21T07:13:10.341Z",
+    "full_address": "133 E Franklin St, Chapel Hill, NC 27514, USA",
+    "latitude": 35.9138468,
+    "longitude": -79.05476449999999,
+    "name": "Underground Printing",
+    "phone_number": "(919) 525-2029",
+    "photos_sample": [],
+    "query": "Garment Exporters",
+    "rating": 4.9,
+    "review_count": 100,
+    "type": "clothing_store",
+    "website": "https://undergroundshirts.com/pages/custom-t-shirt-printing-chapel-hill-nc?utm_source=semrush&utm_medium=organic&utm_campaign=local_listing"
+  }
+]

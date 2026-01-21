@@ -1,0 +1,19 @@
+[
+  {
+    "_id": "697077825dee084c411a70b1",
+    "place_id": "ChIJX6Cl6YKHrIkRyA1g2Ps-F-M",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:51:46.272Z",
+    "full_address": "Backside of brick building, 511 N Raleigh St Suite B2, Angier, NC 27501, USA",
+    "latitude": 35.5146973,
+    "longitude": -78.74124669999999,
+    "name": "Tattoo Serenity",
+    "phone_number": "(984) 355-7001",
+    "photos_sample": [],
+    "query": "Tattoo shops",
+    "rating": 4.8,
+    "review_count": 212,
+    "type": "body_art_service",
+    "website": "https://www.tattooserenity.com/"
+  }
+]

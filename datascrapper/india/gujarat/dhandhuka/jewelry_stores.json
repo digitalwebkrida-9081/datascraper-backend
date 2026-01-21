@@ -1,0 +1,18 @@
+[
+  {
+    "_id": "69707d965dee084c411a75ab",
+    "place_id": "ChIJYfiQABHVXjkROe548tr_hTA",
+    "__v": 0,
+    "createdAt": "2026-01-21T07:17:42.010Z",
+    "full_address": "1, Parshuram Complex Ambapura Gate, Dhandhuka, Gujarat 382460, India",
+    "latitude": 22.3825541,
+    "longitude": 71.98451969999999,
+    "name": "K M JEWELLERS",
+    "phone_number": "094281 09990",
+    "photos_sample": [],
+    "query": "Jewelry stores",
+    "rating": 4.5,
+    "review_count": 44,
+    "type": "jewelry_store"
+  }
+]

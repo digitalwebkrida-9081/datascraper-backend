@@ -1,0 +1,34 @@
+[
+  {
+    "_id": "69707d955dee084c411a7577",
+    "place_id": "ChIJ_VWFxhxBWTkRS1AM2aSu_lg",
+    "__v": 0,
+    "createdAt": "2026-01-21T07:17:41.959Z",
+    "full_address": "Dhama complex, Vitthal Press Rd, Vadhavan, Surendranagar, Gujarat 363001, India",
+    "latitude": 22.727657100000002,
+    "longitude": 71.63277409999999,
+    "name": "SHREE SHUBHAM JEWELLERS",
+    "phone_number": "094090 68191",
+    "photos_sample": [],
+    "query": "Jewelry stores",
+    "rating": 4.6,
+    "review_count": 315,
+    "type": "jewelry_store"
+  },
+  {
+    "_id": "69707d965dee084c411a75a1",
+    "place_id": "ChIJ7XV9l1BBWTkRteaCvtS9A70",
+    "__v": 0,
+    "createdAt": "2026-01-21T07:17:42.004Z",
+    "full_address": "Patravadi Chowk, near Patravadi Hotel, Vadipara, Surendranagar, Gujarat 363001, India",
+    "latitude": 22.7286891,
+    "longitude": 71.6305058,
+    "name": "Omkar Jawellers",
+    "phone_number": "094270 67776",
+    "photos_sample": [],
+    "query": "Jewelry stores",
+    "rating": 4.2,
+    "review_count": 23,
+    "type": "jewelry_store"
+  }
+]

@@ -1,0 +1,33 @@
+[
+  {
+    "_id": "697073895dee084c411a6daf",
+    "place_id": "ChIJw8dZWwD1U4gRF4oBYC-xBVQ",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:34:49.312Z",
+    "full_address": "4065 S Main St, Salisbury, NC 28147, USA",
+    "latitude": 35.6284767,
+    "longitude": -80.5238261,
+    "name": "Shananagans",
+    "phone_number": "(704) 402-3429",
+    "photos_sample": [],
+    "query": "Garment Exporters",
+    "type": "point_of_interest"
+  },
+  {
+    "_id": "697076535dee084c411a6f4b",
+    "place_id": "ChIJrV4f_CKNU4gRTSYufMDJgPk",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:46:43.836Z",
+    "full_address": "1310 Richard St, Salisbury, NC 28144, USA",
+    "latitude": 35.6771192,
+    "longitude": -80.4535301,
+    "name": "Value Clothing, Inc.",
+    "phone_number": "(704) 638-6111",
+    "photos_sample": [],
+    "query": "Garment Exporters",
+    "rating": 3.4,
+    "review_count": 5,
+    "type": "point_of_interest",
+    "website": "http://www.valueclothing.us/"
+  }
+]

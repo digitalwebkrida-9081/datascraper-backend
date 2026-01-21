@@ -1,0 +1,18 @@
+[
+  {
+    "_id": "69707c865dee084c411a73c1",
+    "place_id": "ChIJp-aGaG4RVIgRIOJSfl0U6XQ",
+    "__v": 0,
+    "createdAt": "2026-01-21T07:13:10.327Z",
+    "full_address": "2730 Zion Church Rd bldg c, Concord, NC 28025, USA",
+    "latitude": 35.3781227,
+    "longitude": -80.5817058,
+    "name": "Hem Mills Inc.",
+    "phone_number": "(980) 781-8369",
+    "photos_sample": [],
+    "query": "Garment Exporters",
+    "rating": 4.3,
+    "review_count": 4,
+    "type": "wholesaler"
+  }
+]

@@ -1,0 +1,53 @@
+[
+  {
+    "_id": "697077825dee084c411a7099",
+    "place_id": "ChIJH71sBiRhrIkRFyt5Y_moeug",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:51:46.253Z",
+    "full_address": "1330 5th Ave #120, Garner, NC 27529, USA",
+    "latitude": 35.7093685,
+    "longitude": -78.6218196,
+    "name": "Black Sheep Tattoo",
+    "phone_number": "(984) 200-1402",
+    "photos_sample": [],
+    "query": "Tattoo shops",
+    "rating": 4.8,
+    "review_count": 145,
+    "type": "body_art_service",
+    "website": "http://www.blacksheeptattoo.org/"
+  },
+  {
+    "_id": "697077825dee084c411a70a5",
+    "place_id": "ChIJo6QwvoljrIkRwUspSHl1sZ0",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:51:46.262Z",
+    "full_address": "471 Cleveland Crossing Dr Suite 105, Garner, NC 27529, USA",
+    "latitude": 35.6067791,
+    "longitude": -78.551667,
+    "name": "InkedSanity Tattoo and Body Piercing Studio",
+    "phone_number": "(919) 803-5310",
+    "photos_sample": [],
+    "query": "Tattoo shops",
+    "rating": 4.8,
+    "review_count": 302,
+    "type": "body_art_service",
+    "website": "https://inkedsanity.godaddysites.com/"
+  },
+  {
+    "_id": "697077825dee084c411a70ab",
+    "place_id": "ChIJVXpRHrZjrIkR1JpVChMrElo",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:51:46.268Z",
+    "full_address": "5533 Veterans Pkwy A12, Garner, NC 27529, USA",
+    "latitude": 35.6037416,
+    "longitude": -78.56917589999999,
+    "name": "Monkey Ink Tattoo & Piercings",
+    "phone_number": "(919) 737-0484",
+    "photos_sample": [],
+    "query": "Tattoo shops",
+    "rating": 4.9,
+    "review_count": 110,
+    "type": "body_art_service",
+    "website": "https://www.facebook.com/Monkeyinktattoos/"
+  }
+]

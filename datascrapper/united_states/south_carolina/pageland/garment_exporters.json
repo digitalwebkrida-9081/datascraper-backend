@@ -1,0 +1,19 @@
+[
+  {
+    "_id": "697073895dee084c411a6db7",
+    "place_id": "ChIJzYluvHO0VYgRn6cBl0P6bF0",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:34:49.324Z",
+    "full_address": "404 State Rd S-13-903, Pageland, SC 29728, USA",
+    "latitude": 34.770460899999996,
+    "longitude": -80.3732038,
+    "name": "Whispering Pines Sportswear",
+    "phone_number": "(800) 548-4710",
+    "photos_sample": [],
+    "query": "Garment Exporters",
+    "rating": 4.3,
+    "review_count": 7,
+    "type": "point_of_interest",
+    "website": "https://www.wpsportswear.com/"
+  }
+]

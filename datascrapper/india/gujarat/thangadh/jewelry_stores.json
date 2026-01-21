@@ -1,0 +1,18 @@
+[
+  {
+    "_id": "69707d965dee084c411a75c9",
+    "place_id": "ChIJbYlARswLWTkRZIR_34-qGKo",
+    "__v": 0,
+    "createdAt": "2026-01-21T07:17:42.037Z",
+    "full_address": "Nagar Palika Ni Same, Mama Complex, Ambedkar Nagar, Thangadh, Gujarat 363530, India",
+    "latitude": 22.5753661,
+    "longitude": 71.20073479999999,
+    "name": "SS Jewellers",
+    "phone_number": "099136 29629",
+    "photos_sample": [],
+    "query": "Jewelry stores",
+    "rating": 4.3,
+    "review_count": 4,
+    "type": "jewelry_store"
+  }
+]

@@ -1,0 +1,19 @@
+[
+  {
+    "_id": "69707d955dee084c411a7569",
+    "place_id": "ChIJO8CXcQB_VzkRIA0LdBXC-E0",
+    "__v": 0,
+    "createdAt": "2026-01-21T07:17:41.942Z",
+    "full_address": "Grain Market Rd, Panjetan Nagar, Kalavad, Gujarat 361160, India",
+    "latitude": 22.2037724,
+    "longitude": 70.38309749999999,
+    "name": "Sardar Jewellers - Best Jewellery shop (Unit of Sardar Gold LLP)",
+    "phone_number": "093770 09160",
+    "photos_sample": [],
+    "query": "Jewelry stores",
+    "rating": 5,
+    "review_count": 86,
+    "type": "jewelry_store",
+    "website": "http://www.sardarjewellers.in/"
+  }
+]

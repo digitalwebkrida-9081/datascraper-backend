@@ -1,0 +1,16 @@
+[
+  {
+    "_id": "697073895dee084c411a6da3",
+    "place_id": "ChIJaygTf0LDUogRCx0tvcdVZlU",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:34:49.295Z",
+    "full_address": "9801 Santa Clara St, Reidsville, NC 27320, USA",
+    "latitude": 36.3548586,
+    "longitude": -79.6644747,
+    "name": "K Brothers Export",
+    "photos_sample": [],
+    "query": "Garment Exporters",
+    "type": "point_of_interest",
+    "website": "http://kbrothersexport.com/"
+  }
+]

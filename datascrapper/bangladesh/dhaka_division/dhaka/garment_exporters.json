@@ -1,0 +1,35 @@
+[
+  {
+    "_id": "697073895dee084c411a6da1",
+    "place_id": "ChIJjXRSMADBVTcRQ6zhL4E3tUo",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:34:49.292Z",
+    "full_address": "Darus Salam Rd, Dhaka 1216, Bangladesh",
+    "latitude": 23.783424500000002,
+    "longitude": 90.3526062,
+    "name": "Apparel Export Ltd",
+    "photos_sample": [],
+    "query": "Garment Exporters",
+    "rating": 4.6,
+    "review_count": 8,
+    "type": "point_of_interest",
+    "website": "https://www.apparelexportltd.com/"
+  },
+  {
+    "_id": "697073895dee084c411a6da7",
+    "place_id": "ChIJyTBuhwLFVTcR1yothCBCuFM",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:34:49.302Z",
+    "full_address": "House # 08, 3B Rd - 17, Dhaka 1230, Bangladesh",
+    "latitude": 23.8678888,
+    "longitude": 90.3909856,
+    "name": "Apparel Export Group",
+    "phone_number": "01922-894130",
+    "photos_sample": [],
+    "query": "Garment Exporters",
+    "rating": 5,
+    "review_count": 1,
+    "type": "point_of_interest",
+    "website": "https://apparelexportgr.com/"
+  }
+]

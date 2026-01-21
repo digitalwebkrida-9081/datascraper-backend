@@ -1,0 +1,16 @@
+[
+  {
+    "_id": "697073895dee084c411a6dc1",
+    "place_id": "ChIJAQBcTBzyrIkRLQCQxB4eOVM",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:34:49.332Z",
+    "full_address": "621 Liberty Hill Pass, Morrisville, NC 27560, USA",
+    "latitude": 35.8246958,
+    "longitude": -78.8231555,
+    "name": "The Asian Sourcing",
+    "phone_number": "(818) 938-0167",
+    "photos_sample": [],
+    "query": "Garment Exporters",
+    "type": "point_of_interest"
+  }
+]

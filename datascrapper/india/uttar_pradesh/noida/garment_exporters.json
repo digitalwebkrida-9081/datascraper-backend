@@ -1,0 +1,35 @@
+[
+  {
+    "_id": "697073895dee084c411a6db9",
+    "place_id": "ChIJAQAAsGHlDDkRAltdethLsSo",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:34:49.326Z",
+    "full_address": "A-47, Block A, Sector 64, Noida, Uttar Pradesh 201309, India",
+    "latitude": 28.611206799999998,
+    "longitude": 77.377227,
+    "name": "Bhoomika Garments Pvt Ltd",
+    "phone_number": "0120 408 0200",
+    "photos_sample": [],
+    "query": "Garment Exporters",
+    "rating": 4.6,
+    "review_count": 9,
+    "type": "point_of_interest",
+    "website": "http://bhoomikagarments.com/"
+  },
+  {
+    "_id": "697073895dee084c411a6dbf",
+    "place_id": "ChIJVcTHC8HvDDkRoYzQZaJ810Q",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:34:49.330Z",
+    "full_address": "D-247/12, D Block, Sector 63, Noida, Uttar Pradesh 201309, India",
+    "latitude": 28.630027,
+    "longitude": 77.38454200000001,
+    "name": "Birbal International Pvt Ltd",
+    "phone_number": "0120 414 0290",
+    "photos_sample": [],
+    "query": "Garment Exporters",
+    "rating": 4.2,
+    "review_count": 22,
+    "type": "corporate_office"
+  }
+]

@@ -67,6 +67,7 @@ exports.importLocations = async (req, res) => {
 };
 
 // Get States
+// Get States
 exports.getStates = async (req, res) => {
     try {
         let { country } = req.query;
@@ -89,8 +90,23 @@ exports.getStates = async (req, res) => {
         // Debug
         console.log(`Fetching states for Country Code: ${countryCode} (Input: ${country})`);
 
-        // Fetch directly from library
-        const states = State.getStatesOfCountry(countryCode);
+        // 1. Fetch from Library
+        const libStates = State.getStatesOfCountry(countryCode) || [];
+
+        // 2. Fetch from DB
+        const dbStates = await StateModel.find({ countryCode: countryCode });
+
+        // 3. Merge (DB overrides Library if duplicates found by name, though unlikely)
+        // Actually, we just want to ensure we have all unique states.
+        const mergedMap = new Map();
+        
+        libStates.forEach(s => mergedMap.set(s.isoCode, s));
+        dbStates.forEach(s => {
+            // DB states might use custom ISO codes or names
+            mergedMap.set(s.isoCode, s);
+        });
+
+        const states = Array.from(mergedMap.values());
         
         successResponse(res, states, 'States fetched successfully');
     } catch (error) {
@@ -116,9 +132,18 @@ exports.getCities = async (req, res) => {
              }
         }
 
-        // Fetch cities directly from library
-        // Note: Library expects (countryCode, stateCode)
-        const cities = CityLibrary.getCitiesOfState(countryCode, stateCode);
+        // 1. Fetch from Library
+        const libCities = CityLibrary.getCitiesOfState(countryCode, stateCode) || [];
+
+        // 2. Fetch from DB
+        const dbCities = await CityModel.find({ countryCode: countryCode, stateCode: stateCode });
+
+        // 3. Merge
+        const mergedMap = new Map();
+        libCities.forEach(c => mergedMap.set(c.name.toLowerCase(), c));
+        dbCities.forEach(c => mergedMap.set(c.name.toLowerCase(), c));
+
+        const cities = Array.from(mergedMap.values());
         
         successResponse(res, cities, 'Cities fetched successfully');
     } catch (error) {

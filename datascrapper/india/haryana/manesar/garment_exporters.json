@@ -1,0 +1,17 @@
+[
+  {
+    "_id": "697073895dee084c411a6dbd",
+    "place_id": "ChIJFflOtc49DTkReusfSTcXPco",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:34:49.329Z",
+    "full_address": "7, Sector 5, Imt Manesar, Manesar, Gurugram, Haryana 122052, India",
+    "latitude": 28.3677006,
+    "longitude": 76.92216979999999,
+    "name": "Modelama Exports Pvt Ltd",
+    "photos_sample": [],
+    "query": "Garment Exporters",
+    "rating": 4.1,
+    "review_count": 33,
+    "type": "point_of_interest"
+  }
+]

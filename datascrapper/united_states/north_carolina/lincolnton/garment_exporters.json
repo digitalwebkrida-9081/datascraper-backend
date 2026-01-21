@@ -1,0 +1,19 @@
+[
+  {
+    "_id": "69707c865dee084c411a73b4",
+    "place_id": "ChIJz_JSx2LJVogRdYB7S92DtOg",
+    "__v": 0,
+    "createdAt": "2026-01-21T07:13:10.308Z",
+    "full_address": "536 N Generals Blvd, Lincolnton, NC 28092, USA",
+    "latitude": 35.4892886,
+    "longitude": -81.2446977,
+    "name": "SVCM International",
+    "phone_number": "(305) 767-3595",
+    "photos_sample": [],
+    "query": "Garment Exporters",
+    "rating": 5,
+    "review_count": 1,
+    "type": "point_of_interest",
+    "website": "https://www.facebook.com/SVCMGLOBAL"
+  }
+]

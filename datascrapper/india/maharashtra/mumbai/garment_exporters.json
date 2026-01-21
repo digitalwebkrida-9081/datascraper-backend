@@ -1,0 +1,19 @@
+[
+  {
+    "_id": "697073895dee084c411a6d9f",
+    "place_id": "ChIJKZfo1zbI5zsRiYMd6SCMEDI",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:34:49.290Z",
+    "full_address": "Plot no. B, Delux House, 50, Veera Desai Rd, Prathmesh Complex, Andheri West, Mumbai, Maharashtra 400053, India",
+    "latitude": 19.132737799999997,
+    "longitude": 72.8376345,
+    "name": "Choudhary Garments",
+    "phone_number": "022 6679 3344",
+    "photos_sample": [],
+    "query": "Garment Exporters",
+    "rating": 4.4,
+    "review_count": 37,
+    "type": "point_of_interest",
+    "website": "http://www.chgarments.com/"
+  }
+]

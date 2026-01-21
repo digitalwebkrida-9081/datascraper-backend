@@ -1,0 +1,18 @@
+[
+  {
+    "_id": "697073895dee084c411a6dc7",
+    "place_id": "ChIJQZGGcpAKU4gRBwQKarw4SSg",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:34:49.339Z",
+    "full_address": "110 W Guilford St, Thomasville, NC 27360, USA",
+    "latitude": 35.8840637,
+    "longitude": -80.0863342,
+    "name": "Carolina Underwear Co",
+    "phone_number": "(336) 472-7788",
+    "photos_sample": [],
+    "query": "Garment Exporters",
+    "rating": 4.7,
+    "review_count": 17,
+    "type": "point_of_interest"
+  }
+]

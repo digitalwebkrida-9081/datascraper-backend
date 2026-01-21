@@ -1,0 +1,18 @@
+[
+  {
+    "_id": "69707d955dee084c411a758b",
+    "place_id": "ChIJ8WOp1IVvWTkRfMy6rLDnUV0",
+    "__v": 0,
+    "createdAt": "2026-01-21T07:17:41.982Z",
+    "full_address": "Soni bazar, Darbar naku, Halvad, Gujarat 363330, India",
+    "latitude": 23.0127703,
+    "longitude": 71.1796301,
+    "name": "Kalpana jewellers - Best Gold & Silver Jewellery Store in Halvad",
+    "phone_number": "097235 62702",
+    "photos_sample": [],
+    "query": "Jewelry stores",
+    "rating": 4.9,
+    "review_count": 40,
+    "type": "jewelry_store"
+  }
+]

@@ -1,0 +1,50 @@
+[
+  {
+    "_id": "69707c865dee084c411a73c3",
+    "place_id": "ChIJwymL_thYrIkRpjs_gq3McjY",
+    "__v": 0,
+    "createdAt": "2026-01-21T07:13:10.328Z",
+    "full_address": "1520-3 Brookside Dr, Raleigh, NC 27604, USA",
+    "latitude": 35.799056,
+    "longitude": -78.62427699999999,
+    "name": "New South Manufactory",
+    "photos_sample": [],
+    "query": "Garment Exporters",
+    "rating": 5,
+    "review_count": 2,
+    "type": "point_of_interest",
+    "website": "http://www.newsouthmanufactory.com/"
+  },
+  {
+    "_id": "69707c865dee084c411a73cb",
+    "place_id": "ChIJre4DfXX1rIkRzOosQKaBbfY",
+    "__v": 0,
+    "createdAt": "2026-01-21T07:13:10.336Z",
+    "full_address": "1017 Main Campus Dr, Raleigh, NC 27606, USA",
+    "latitude": 35.7700496,
+    "longitude": -78.6782181,
+    "name": "US Fashion",
+    "photos_sample": [],
+    "query": "Garment Exporters",
+    "rating": 4.5,
+    "review_count": 2,
+    "type": "point_of_interest"
+  },
+  {
+    "_id": "69707c865dee084c411a73cf",
+    "place_id": "ChIJlZineNjjrIkRrXL750cTAYk",
+    "__v": 0,
+    "createdAt": "2026-01-21T07:13:10.339Z",
+    "full_address": "5800 Faringdon Pl, Raleigh, NC 27609, USA",
+    "latitude": 35.8616342,
+    "longitude": -78.6208844,
+    "name": "Subject 2 Change Custom Apparel Design Co.",
+    "phone_number": "(919) 237-1545",
+    "photos_sample": [],
+    "query": "Garment Exporters",
+    "rating": 5,
+    "review_count": 11,
+    "type": "point_of_interest",
+    "website": "http://www.shops2c.com/"
+  }
+]

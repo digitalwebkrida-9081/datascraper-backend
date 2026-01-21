@@ -1,0 +1,19 @@
+[
+  {
+    "_id": "697077825dee084c411a708d",
+    "place_id": "ChIJQxHjAfanrIkRsaN5k-0H6k8",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:51:46.243Z",
+    "full_address": "129 S Gulf St, Sanford, NC 27330, USA",
+    "latitude": 35.478224499999996,
+    "longitude": -79.18093139999999,
+    "name": "Luv Ink",
+    "phone_number": "(919) 292-2469",
+    "photos_sample": [],
+    "query": "Tattoo shops",
+    "rating": 5,
+    "review_count": 257,
+    "type": "body_art_service",
+    "website": "https://luv-ink.wsite.top/"
+  }
+]

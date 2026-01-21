@@ -1,0 +1,35 @@
+[
+  {
+    "_id": "69707d955dee084c411a757f",
+    "place_id": "ChIJEbuQ1eHrWDkRwbyj7FyXAeM",
+    "__v": 0,
+    "createdAt": "2026-01-21T07:17:41.970Z",
+    "full_address": "Near At Bhadali Gate, ભડલી ના જાપે , આહિર ચોરા પાસે , ગઢડા(સ્વા, Bhadali na jape , Ahir chora pase, and, Ahir chora, Gadhada, Gujarat 364750, India",
+    "latitude": 21.966401599999998,
+    "longitude": 71.5714837,
+    "name": "Kanija Jeweller's",
+    "phone_number": "095103 81595",
+    "photos_sample": [],
+    "query": "Jewelry stores",
+    "rating": 5,
+    "review_count": 21,
+    "type": "jewelry_store",
+    "website": "https://instagram.com/kanija_jewellers?igshid=NzZlODBkYWE4Ng=="
+  },
+  {
+    "_id": "69707d965dee084c411a75a9",
+    "place_id": "ChIJ2fYncYXBWDkR-9SsRngiyhE",
+    "__v": 0,
+    "createdAt": "2026-01-21T07:17:42.009Z",
+    "full_address": "Soni Bazar, Juni Kapad Bazar, Gadhada, Gujarat 364750, India",
+    "latitude": 21.965678999999998,
+    "longitude": 71.5749833,
+    "name": "SHREE BALAJI JEWELLERS - most trusted jewellers in gadhada",
+    "phone_number": "093748 17575",
+    "photos_sample": [],
+    "query": "Jewelry stores",
+    "rating": 5,
+    "review_count": 19,
+    "type": "jewelry_store"
+  }
+]

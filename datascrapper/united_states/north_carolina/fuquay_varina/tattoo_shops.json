@@ -1,0 +1,19 @@
+[
+  {
+    "_id": "697077825dee084c411a707f",
+    "place_id": "ChIJCzt4bQqPrIkRDCLMYrPOpEs",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:51:46.223Z",
+    "full_address": "706 N Main St, Fuquay-Varina, NC 27526, USA",
+    "latitude": 35.591252,
+    "longitude": -78.792204,
+    "name": "401 Tattoo and Antiquities",
+    "phone_number": "(919) 285-2388",
+    "photos_sample": [],
+    "query": "Tattoo shops",
+    "rating": 4.7,
+    "review_count": 150,
+    "type": "body_art_service",
+    "website": "http://www.401tattooarts.com/"
+  }
+]

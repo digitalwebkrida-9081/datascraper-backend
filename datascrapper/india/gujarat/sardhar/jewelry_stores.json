@@ -1,0 +1,33 @@
+[
+  {
+    "_id": "69707d965dee084c411a75c7",
+    "place_id": "ChIJO0OxdCdPWDkRYS02Km9r86g",
+    "__v": 0,
+    "createdAt": "2026-01-21T07:17:42.035Z",
+    "full_address": "Sardhar, Gujarat 360025, India",
+    "latitude": 22.1398914,
+    "longitude": 70.98597079999999,
+    "name": "Deep Jewellers",
+    "phone_number": "083206 04378",
+    "photos_sample": [],
+    "query": "Jewelry stores",
+    "rating": 4.7,
+    "review_count": 6,
+    "type": "jewelry_store"
+  },
+  {
+    "_id": "69707d965dee084c411a75d5",
+    "place_id": "ChIJF519Ui1PWDkRKXS-2TvxgwU",
+    "__v": 0,
+    "createdAt": "2026-01-21T07:17:42.045Z",
+    "full_address": "Sardhar, near bus stand, Sardhar, Gujarat 360025, India",
+    "latitude": 22.1392527,
+    "longitude": 70.98742469999999,
+    "name": "Sadguru silver",
+    "photos_sample": [],
+    "query": "Jewelry stores",
+    "rating": 5,
+    "review_count": 1,
+    "type": "jewelry_store"
+  }
+]

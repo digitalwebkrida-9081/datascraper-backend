@@ -1,0 +1,19 @@
+[
+  {
+    "_id": "697077825dee084c411a7087",
+    "place_id": "ChIJ9WX4kJwrU4gRLcybfpJ9Oms",
+    "__v": 0,
+    "createdAt": "2026-01-21T06:51:46.239Z",
+    "full_address": "232 W 5th St, Burlington, NC 27215, USA",
+    "latitude": 36.0919867,
+    "longitude": -79.44221379999999,
+    "name": "Inferno Ink Tattoo & Body Piercing Studio",
+    "phone_number": "(336) 229-2288",
+    "photos_sample": [],
+    "query": "Tattoo shops",
+    "rating": 4.9,
+    "review_count": 1032,
+    "type": "body_art_service",
+    "website": "http://www.infernoinktattoo.com/"
+  }
+]

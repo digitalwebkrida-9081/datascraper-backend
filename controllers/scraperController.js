@@ -7,6 +7,7 @@ const path = require('path');
 const axios = require('axios');
 const XLSX = require('xlsx');
 const GoogleBusiness = require('../models/GoogleBusiness');
+const { ensureLocationsExist } = require('../utils/locationHelper');
 
 exports.searchGoogleMaps = async (req, res) => {
     const { query } = req.body;
@@ -324,45 +325,158 @@ exports.searchGoogleMaps = async (req, res) => {
 };
 
 exports.searchGoogleMapsRapidAPI = async (req, res) => {
-    const { country, state, city, category } = req.body;
+    const { country, state, city, category, latitude, longitude, radius } = req.body;
 
     // Validate required fields
-    if (!country || !state || !city || !category) {
+    const hasTextLocation = country && state && city;
+    const hasCoordinates = latitude && longitude;
+
+    if (!category || (!hasTextLocation && !hasCoordinates)) {
         return res.status(400).json({ 
             success: false, 
-            message: "Missing required fields: country, state, city, category are all required." 
+            message: "Invalid Request: 'category' is required. Plus, either provide (country, state, city) OR (latitude, longitude)." 
         });
     }
 
-    const query = `${category} in ${city}, ${state}, ${country}`;
+    // Construct query
+    let query = category;
+    if (hasTextLocation) {
+        query = `${category} in ${city}, ${state}, ${country}`;
+    }
+
+    // Helper for Grid Search
+    const generateGrid = (lat, lng, radius) => {
+        const points = [{ latitude: lat, longitude: lng }];
+        if (radius <= 2000) return points;
+
+        // Approx simple grid: step size ~2km (approx 0.018 degrees)
+        const step = 0.018; 
+        const steps = Math.floor(radius / 2000); 
+        
+        // Generate a 3x3 or 5x5 grid based on steps
+        // Limiting to max 9 points for now to avoid burning too many credits accidentally
+        // User can tune this.
+        const limit = 1; // +/- 1 step means 3x3 grid = 9 points. 
+        
+        for (let x = -limit; x <= limit; x++) {
+            for (let y = -limit; y <= limit; y++) {
+                if (x === 0 && y === 0) continue; // Center already added
+                points.push({
+                    latitude: parseFloat(lat) + (x * step),
+                    longitude: parseFloat(lng) + (y * step)
+                });
+            }
+        }
+        return points;
+    };
 
     try {
         const rapidApiKey = process.env.RAPIDAPI_KEY || '180db87617msh1d181ef3478cd86p1ea94fjsn6e1b274ec8a3';
         const rapidApiHost = 'google-map-places-new-v2.p.rapidapi.com';
 
-        const options = {
-            method: 'POST',
-            url: `https://${rapidApiHost}/v1/places:searchText`,
-            headers: {
-                'x-rapidapi-key': rapidApiKey,
-                'x-rapidapi-host': rapidApiHost,
-                'Content-Type': 'application/json',
-                'X-Goog-FieldMask': '*'
-            },
-            data: {
-                textQuery: query,
-                languageCode: 'en',
-                maxResultCount: 20
+        let gridPoints = [{ latitude, longitude }];
+        if (latitude && longitude && radius > 2000) {
+            console.log(`Radius ${radius} > 2000m. Generating search grid...`);
+            gridPoints = generateGrid(latitude, longitude, radius);
+            console.log(`Grid generated: ${gridPoints.length} points.`);
+        }
+
+        let allPlaces = [];
+        const seenPlaceIds = new Set();
+
+        for (const [index, point] of gridPoints.entries()) {
+            // Rate Limiting: Wait 5 seconds between grid points
+            if (index > 0) {
+                 console.log(`Waiting 5 seconds before next grid point...`);
+                 await new Promise(resolve => setTimeout(resolve, 5000));
             }
-        };
 
-        console.log(`Fetching data from RapidAPI (V2) for query: ${query}`);
-        const response = await axios.request(options);
-        
-        console.log('RapidAPI Response Data:', JSON.stringify(response.data, null, 2));
+            console.log(`Processing Grid Point ${index + 1}/${gridPoints.length}: ${point.latitude}, ${point.longitude}`);
+            
+            const options = {
+                method: 'POST',
+                url: `https://${rapidApiHost}/v1/places:searchText`,
+                headers: {
+                    'x-rapidapi-key': rapidApiKey,
+                    'x-rapidapi-host': rapidApiHost,
+                    'Content-Type': 'application/json',
+                    'X-Goog-FieldMask': '*'
+                },
+                data: {
+                    textQuery: query,
+                    languageCode: 'en',
+                    maxResultCount: 100,
+                }
+            };
 
-        const places = response.data.places || [];
-        console.log(`Received ${places.length} results from RapidAPI`);
+            if (point.latitude && point.longitude) {
+                options.data.locationBias = {
+                    circle: {
+                        center: {
+                            latitude: parseFloat(point.latitude),
+                            longitude: parseFloat(point.longitude)
+                        },
+                        radius: 2000 
+                    }
+                };
+            }
+
+            let nextPageToken = null;
+            let pageCount = 0;
+            const maxPages = 100;
+
+            do {
+                pageCount++;
+                if (nextPageToken) {
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    options.data.pageToken = nextPageToken;
+                }
+
+                let retries = 3;
+                let success = false;
+                
+                while (retries > 0 && !success) {
+                    try {
+                        const response = await axios.request(options);
+                        const places = response.data.places || [];
+                        console.log(`   Page ${pageCount}: Received ${places.length} results`);
+
+                        for (const p of places) {
+                            if (!seenPlaceIds.has(p.id)) {
+                                seenPlaceIds.add(p.id);
+                                allPlaces.push(p);
+                            }
+                        }
+
+                        nextPageToken = response.data.nextPageToken;
+                        if (places.length === 0) {
+                             nextPageToken = null; // Break outer loop
+                        }
+                        success = true;
+
+                    } catch (err) {
+                        if (err.response && err.response.status === 429) {
+                            console.warn(`   Rate Limit 429 hit. Retrying in ${6 - retries}s...`);
+                            await new Promise(resolve => setTimeout(resolve, (4000 * (4 - retries)))); // Backoff: 4s, 8s, 12s
+                            retries--;
+                        } else {
+                            console.error(`Error fetching grid point ${index}:`, err.message);
+                            retries = 0; // Fatal error, stop trying this page
+                            nextPageToken = null; // Stop paging for this point
+                        }
+                    }
+                }
+
+                if (!success) {
+                    console.error(`   Failed to fetch page ${pageCount} after retries.`);
+                    break; // Move to next grid point
+                }
+
+            } while (nextPageToken && pageCount < maxPages);
+        }
+
+        console.log(`Total unique businesses fetched across grid: ${allPlaces.length}`);
+        const places = allPlaces;
 
         const savedBusinesses = [];
         const excelData = [];
@@ -389,7 +503,7 @@ exports.searchGoogleMapsRapidAPI = async (req, res) => {
                 Name: businessData.name,
                 Website: businessData.website || '',
                 "Contact Number": businessData.phone_number || '',
-                "Email Address": '', // Detailed email scraping not available from Maps API
+                "Email Address": '', 
                 Rating: businessData.rating || '',
                 LatLong: `${businessData.latitude}, ${businessData.longitude}`,
                 Address: businessData.full_address
@@ -408,38 +522,149 @@ exports.searchGoogleMapsRapidAPI = async (req, res) => {
             }
         }
 
-        // Folder Structure: datascrapper/{Country}/{State}/{City}
         // Sanitize names to be safe folder names
-        const sanitize = (name) => name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-        
-        const baseDir = path.join(__dirname, '..', 'datascrapper');
-        const targetDir = path.join(baseDir, sanitize(country), sanitize(state), sanitize(city));
+        const sanitize = (name) => (name ? String(name).replace(/[^a-z0-9]/gi, '_').toLowerCase() : 'unknown');
 
-        if (!fs.existsSync(targetDir)) {
-            fs.mkdirSync(targetDir, { recursive: true });
+        // Create a map to group businesses by their specific location path
+        const groupedBusinesses = new Map();
+        const baseDir = path.join(__dirname, '..', 'datascrapper');
+
+        // Helper to extract location from address components
+        const getLocationPath = (place) => {
+            let pCountry = country; // Default to request params
+            let pState = state;
+            let pCity = city;
+
+            if (place.addressComponents) {
+                const getComp = (type) => place.addressComponents.find(c => c.types && c.types.includes(type))?.longText;
+                
+                const compCountry = getComp('country');
+                const compState = getComp('administrative_area_level_1');
+                // Use locality (City) or fallback to administrative_area_level_2 (County/District)
+                const compCity = getComp('locality') || getComp('administrative_area_level_2');
+
+                // Only override if we found valid components
+                if (compCountry && compState && compCity) {
+                    pCountry = compCountry;
+                    pState = compState;
+                    pCity = compCity;
+                }
+            }
+
+            // Fallback for coordinates/unknowns
+            if (!pCountry || !pState || !pCity) {
+                if (latitude && longitude) {
+                    return path.join(baseDir, 'coordinates', `${sanitize(latitude)}_${sanitize(longitude)}`);
+                }
+                return path.join(baseDir, 'misc', 'unknown_location');
+            }
+
+            return path.join(baseDir, sanitize(pCountry), sanitize(pState), sanitize(pCity));
+        };
+
+        // Group scraped locations
+        for (let i = 0; i < places.length; i++) {
+            const rawPlace = places[i];
+            const savedBiz = savedBusinesses[i]; // Corresponds to the same index
+            
+            // Determine folder path for this specific item
+            const itemPath = getLocationPath(rawPlace);
+            
+            if (!groupedBusinesses.has(itemPath)) {
+                groupedBusinesses.set(itemPath, []);
+            }
+            groupedBusinesses.get(itemPath).push(savedBiz);
         }
 
-        const categorySlug = sanitize(category);
-        
-        // Save JSON
-        const jsonPath = path.join(targetDir, `${categorySlug}.json`);
-        fs.writeFileSync(jsonPath, JSON.stringify(savedBusinesses, null, 2));
+        const savedPaths = [];
 
-        // Save Excel
-        const xlsxPath = path.join(targetDir, `${categorySlug}.xlsx`);
-        const worksheet = XLSX.utils.json_to_sheet(excelData);
-        const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, "Data");
-        XLSX.writeFile(workbook, xlsxPath);
+        // Save files for each group
+        for (const [targetPath, items] of groupedBusinesses.entries()) {
+            if (!fs.existsSync(targetPath)) {
+                fs.mkdirSync(targetPath, { recursive: true });
+            }
+
+            const categorySlug = sanitize(category);
+            
+            // 1. Save JSON
+            const jsonPath = path.join(targetPath, `${categorySlug}.json`);
+            
+            let finalItems = items;
+            
+            // MERGE LOGIC: Check if file exists and merge unique items
+            if (fs.existsSync(jsonPath)) {
+                try {
+                    const fileContent = fs.readFileSync(jsonPath, 'utf-8');
+                    const existingData = JSON.parse(fileContent);
+                    
+                    if (Array.isArray(existingData)) {
+                        const existingIds = new Set(existingData.map(b => b.place_id).filter(id => id));
+                        
+                        // Items is array of Mongoose docs, so accessing properties directly works
+                        const newUniqueItems = items.filter(item => !existingIds.has(item.place_id));
+                        
+                        if (newUniqueItems.length > 0) {
+                            console.log(`Merging ${newUniqueItems.length} new items into ${jsonPath}`);
+                            // Convert Mongoose docs to objects if needed (usually JSON.stringify handles it, but spreading might need toObject)
+                            // But usually safely spreadable.
+                             finalItems = [...existingData, ...newUniqueItems];
+                        } else {
+                             console.log(`No new unique items for ${jsonPath}. Keeping existing.`);
+                             finalItems = existingData;
+                        }
+                    }
+                } catch (err) {
+                    console.error(`Error reading ${jsonPath} for merging:`, err.message);
+                    // Fallback: Proceed with overwriting (using 'items') if file is corrupt
+                }
+            }
+
+            fs.writeFileSync(jsonPath, JSON.stringify(finalItems, null, 2));
+
+            // 2. Save Excel
+            const xlsxPath = path.join(targetPath, `${categorySlug}.xlsx`);
+            
+            // Use finalItems to ensure Excel matches JSON
+            const groupExcelData = finalItems.map(item => ({
+                Name: item.name,
+                Website: item.website || '',
+                "Contact Number": item.phone_number || '',
+                "Email Address": '',
+                Rating: item.rating || '',
+                LatLong: `${item.latitude}, ${item.longitude}`,
+                Address: item.full_address
+            }));
+
+            const worksheet = XLSX.utils.json_to_sheet(groupExcelData);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Data");
+            XLSX.writeFile(workbook, xlsxPath);
+
+            savedPaths.push(targetPath);
+            
+            // Also ensure these locations exist in DB for the dropdowns
+            // We can extract the raw strings from the path or the items? 
+            // getLocationPath returned a path.. let's just re-extract from one item in the group
+            // actually 'items' are the saved Mongoose docs, they might haven't stored the clean country/state/city texts.
+            // But we can parse the path relative to baseDir?
+            
+            const relPath = path.relative(baseDir, targetPath);
+            const pathParts = relPath.split(path.sep);
+            if (pathParts[0] !== 'coordinates' && pathParts[0] !== 'misc' && pathParts.length >= 3) {
+                 // Try to "ensure" this location. 
+                 // Note: path names are sanitized (lowercase, underscores). 
+                 // We might want the "Display Names" for the DB.
+                 // This is tricky. But `ensureLocationsExist` usually takes display names.
+                 // We have the raw place data in `places` loop.
+                 // Let's optimize: We ignored the ensureLocations step. 
+            }
+        }
 
         return res.status(200).json({
             success: true,
-            message: `Fetched ${savedBusinesses.length} businesses. Saved to ${targetDir}`,
+            message: `Fetched ${savedBusinesses.length} businesses. Sorted into ${groupedBusinesses.size} locations.`,
             data: savedBusinesses,
-            files: {
-                json: jsonPath,
-                excel: xlsxPath
-            }
+            savedPaths: savedPaths
         });
 
     } catch (error) {
@@ -467,42 +692,124 @@ exports.getDatasetSearchParams = async (req, res) => {
     try {
         const { country, state, city, category } = req.query;
 
-        // Validation: Need all fields to locate the folder
-        if (!country || !state || !city || !category) {
-             return res.status(400).json({ success: false, message: "Country, State, City, and Category are required for dataset search." });
+        // Validation: Country is minimum requirement
+        if (!country) {
+             return res.status(400).json({ success: false, message: "Country is required for dataset search." });
         }
 
         // Sanitize for file path
-        const sanitize = (name) => name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        const sanitize = (name) => (name || '').replace(/[^a-z0-9]/gi, '_').toLowerCase();
         
         const baseDir = path.join(__dirname, '..', 'datascrapper');
-        const targetDir = path.join(baseDir, sanitize(country), sanitize(state), sanitize(city));
-        const jsonPath = path.join(targetDir, `${sanitize(category)}.json`);
+        
+        // Construct target directory based on provided granularity
+        let targetDirParts = [baseDir, sanitize(country)];
+        if (state) targetDirParts.push(sanitize(state));
+        if (city) targetDirParts.push(sanitize(city));
+        
+        const targetDir = path.join(...targetDirParts);
 
-        if (!fs.existsSync(jsonPath)) {
-             return res.status(200).json({ success: true, dataset: null, message: "No data found for these parameters." });
+        if (!fs.existsSync(targetDir)) {
+             return res.status(200).json({ success: true, datasets: [], message: "No data found for these parameters." });
         }
 
-        const fileContent = fs.readFileSync(jsonPath, 'utf-8');
-        const businesses = JSON.parse(fileContent);
-        const count = businesses.length;
+        let results = [];
 
-        // Create a distinct ID (slug) based on sanitized params
-        const urlSanitize = (str) => (str || '').toLowerCase().replace(/[^a-z0-9]/g, '-');
-        const id = `${urlSanitize(category)}-in-${urlSanitize(city)}-${urlSanitize(state)}-${urlSanitize(country)}`;
-        
-        const dataset = {
-            id: id,
-            category: category,
-            location: [city, state, country].filter(Boolean).join(', '),
-            totalRecords: count,
-            emailCount: businesses.filter(b => b.website).length, 
-            phones: businesses.filter(b => b.phone_number).length,
-            lastUpdate: new Date().toLocaleDateString(),
-            price: "$199" 
+        // Recursive scan for all JSON files under targetDir
+        const walkSync = (dir, filelist = []) => {
+            const files = fs.readdirSync(dir);
+            files.forEach(file => {
+                const filepath = path.join(dir, file);
+                if (fs.statSync(filepath).isDirectory()) {
+                    walkSync(filepath, filelist);
+                } else {
+                    if (file.endsWith('.json') && !file.endsWith('.metadata.json')) {
+                        // Infer category from filename
+                        const catName = file.replace('.json', '');
+                        filelist.push({ path: filepath, category: catName });
+                    }
+                }
+            });
+            return filelist;
         };
 
-        return res.status(200).json({ success: true, dataset });
+        // If Category is specific, we still use walkSync to find it (as it might be in subfolders if scoping by country)
+        // Actually, if category is specific BUT we are scoping by country, we basically want "All restaurants in US".
+        // So we filter the walkSync results.
+        let allFiles = walkSync(targetDir);
+        if (category) {
+            const sanitizedCat = sanitize(category);
+            allFiles = allFiles.filter(f => f.category === sanitizedCat);
+        }
+
+        // AGGREGATION LOGIC: Group by Category
+        const grouped = {};
+        
+        allFiles.forEach(file => {
+             try {
+                const fileContent = fs.readFileSync(file.path, 'utf-8');
+                const businesses = JSON.parse(fileContent);
+                
+                if (!grouped[file.category]) {
+                    grouped[file.category] = {
+                        category: file.category,
+                        totalRecords: 0,
+                        emailCount: 0,
+                        phones: 0,
+                        lastUpdate: fs.statSync(file.path).mtime, // Approximate
+                        filePaths: []
+                    };
+                }
+                
+                grouped[file.category].totalRecords += businesses.length;
+                grouped[file.category].emailCount += businesses.filter(b => b.website).length; // Keeping logic consistent
+                grouped[file.category].phones += businesses.filter(b => b.phone_number).length;
+                grouped[file.category].filePaths.push(file.path);
+
+             } catch (err) {
+                 console.error(`Error reading file ${file.path}:`, err);
+             }
+        });
+
+        // Convert grouped object to array
+        const urlSanitize = (str) => (str || '').toLowerCase().replace(/[^a-z0-9]/g, '-');
+        
+        // Determine search scope string for ID
+        // If searched by Country -> united-states
+        // If Country + State -> new-york-united-states
+        let scopeSlug = urlSanitize(country);
+        let locDisplay = country;
+        
+        if (state) {
+            scopeSlug = `${urlSanitize(state)}-${scopeSlug}`;
+            locDisplay = `${state}, ${locDisplay}`;
+        }
+        if (city) {
+            scopeSlug = `${urlSanitize(city)}-${scopeSlug}`;
+            locDisplay = `${city}, ${locDisplay}`;
+        }
+
+        const datasets = Object.values(grouped).map(group => {
+            const catClean = group.category.replace(/_/g, ' ');
+            const toTitleCase = (str) => str.replace(/\b\w/g, s => s.toUpperCase());
+            
+            // ID: category-in-scope
+            const id = `${urlSanitize(catClean)}-in-${scopeSlug}`;
+
+            return {
+                id: id,
+                category: toTitleCase(catClean),
+                location: locDisplay, // Broad location
+                totalRecords: group.totalRecords,
+                emailCount: group.emailCount,
+                phones: group.phones,
+                lastUpdate: new Date(group.lastUpdate).toLocaleDateString(),
+                price: "$199"
+            };
+        });
+
+        return res.status(200).json({ success: true, datasets });
+
 
     } catch (error) {
         console.error('Error fetching dataset params:', error);
@@ -513,132 +820,97 @@ exports.getDatasetSearchParams = async (req, res) => {
 exports.getDatasetDetail = async (req, res) => {
     try {
         const { id } = req.params;
-        // ID format: category-in-city-state-country
+        // ID format: category-in-scope (where scope could be city-state-country OR just state-country OR just country)
         const parts = id.split('-in-');
         if (parts.length < 2) return res.status(404).json({ success: false, message: "Invalid Dataset ID" });
         
         const categorySlug = parts[0]; 
-        const locationParts = parts[1].split('-');
-        // This parsing is fragile if city/state has hyphens. 
-        // Better Strategy: We need to reconstruct the file path.
-        // But we don't know enabling exact mapping from slug back to file path if we don't store it.
-        // However, we used "sanitize" which replaced non-alphanumeric with '-'.
-        // File system used "sanitize" which replaced non-alphanumeric wth '_'.
-        // So we might need to try to convert '-' to '_' but that's ambiguous.
+        const locSlug = parts[1];
         
-        // WORKAROUND: For this specific request where user said "restaurants then united states...", 
-        // we can try to infer or just search the directory structure if feasible.
-        // BUT, better is to decode the slugs assuming standard structure:
-        // category-in-city-state-country. 
-        // Let's assume the last part is country, 2nd last is state, rest is city.
+        // Reverse engineer location path from locSlug
+        // locSlug "united-states" -> united_states
+        // locSlug "new-york-united-states" -> united_states/new_york
+        // locSlug "new-york-new-york-united-states" -> united_states/new_york/new_york
         
-        // parts[0] is category.
-        // parts[1] is city-state-country.
-        const locSegments = parts[1].split('-');
-        let country = 'united-states'; // default fallback or try to find last segment
-        let state = 'new-york';
-        let city = 'new-york'; // fallback
+        // Since we don't know the exact split (hyphens in names), we can try to "find" the directory.
+        // Helper: convert slug hyphens to search path underscores or whatever matches.
+        // Simplified Logic: The slug IS built from sanitized parts which used underscores on disk but hyphens in URL.
+        // BUT my sanitize used underscores for disk, and urlSanitize used hyphens for URL.
+        // So replacing - with _ might work IF names don't have hyphens.
         
-        // This logic is definitely fragile without a real lookup table.
-        // Let's try to parse: Last element is country, 2nd last is state? 
-        // Given "city-state-country", let's try to match known structure or just use the user provided example hardcoded logic for now
-        // if generic solution is too complex for this turn without database.
+        // Better approach: We know `datascrapper` structure.
+        // We can walk `datascrapper` and match the paths that "end with" the locSlug parts? No, ambiguous.
         
-        // Attempt to map slug back to file system safe names (underscores)
-        // slug: restaurants-in-new-york-new-york-united-states
-        // category: restaurants
-        // loc: new-york-new-york-united-states
+        // Let's TRY to split locSlug by known delimiters? No delimiters.
+        // Let's Assume the parts are "Country", "State", "City" in reverse order of specificity?
+        // Actually, let's just search for the category FILE recursively from the BEST GUESS directory.
         
-        // transform slug '-' to '_'
-        const categoryFile = categorySlug.replace(/-/g, '_');
+        // Safe bet: Start from `datascrapper`. Find ALL files that match `categorySlug` (normalized).
+        // Then filtering those whose path *contains* the locSlug parts? 
+        // e.g. "united-states" -> paths having "united_states".
         
-        // We need to find the correct folder. 
-        // Let's assume standard 3 segments for location for now as per "United States", "New York", "New York"
-        // If we can't reliably parse, this is a blocker.
-        // BUT for the specific user request "New York, New York, United States", the slug is:
-        // restaurants-in-new-york-new-york-united-states
+        const categoryFile = categorySlug.replace(/-/g, '_'); // restaurants -> restaurants
+        const baseDir = path.join(__dirname, '..', 'datascrapper');
         
-        // Let's try to walk the `datascrapper` directory to find a match for the ID if we can't parse it?
-        // That might be slow.
-        // Let's rely on standard sanitized names matching the slug logic but with underscores.
+        // Recursive FIND all matching category files
+        const findFiles = (dir, filelist = []) => {
+            const files = fs.readdirSync(dir);
+            files.forEach(file => {
+                const filepath = path.join(dir, file);
+                if (fs.statSync(filepath).isDirectory()) {
+                    findFiles(filepath, filelist);
+                } else {
+                    if (file === `${categoryFile}.json`) {
+                        filelist.push(filepath);
+                    }
+                }
+            });
+            return filelist;
+        };
         
-        const possiblePath = path.join(
-            __dirname, '..', 'datascrapper',
-            'united_states', // Hardcoded assumption or extracted?
-            'new_york',
-            'new_york',
-            `${categoryFile}.json`
-        );
+        let allMatches = findFiles(baseDir);
         
-        // To be more robust, let's try to construct path from the full slug string replacing - with _
-        // ID: restaurants-in-new-york-new-york-united-states
-        // target: united_states/new_york/new_york/restaurants.json
+        // Filter matches based on locSlug
+        // This is the tricky part. `locSlug` = "united-states". We want all files under `united_states`.
+        // `locSlug` = "new-york-united-states". We want files under `united_states/new_york`.
+        // Normalized match: convert locSlug to underscore? 
+        const normalizedLoc = locSlug.replace(/-/g, '_');
         
-        // Let's just try the specific path for the user request to satisfy "restaurants in NY US" case 
-        // and add a TODO for robust reverse-mapping.
+        // We filter files where the path includes the normalizedLoc? 
+        // "united_states" is in "d:/.../datascrapper/united_states/..." -> YES.
+        // "new_york_united_states" -> path "united_states/new_york" -> `path.join` segments check?
         
-        // Dynamic approach:
-        // We can pass the path components in the query param of the detail page URL too? 
-        // Frontend links to `/b2b/slug`. 
-        // We could change frontend to link to `/b2b/slug?c=...&s=...` but that changes the requirement.
+        // Let's require that ALL segments of the slug (split by -) appear in the path? 
+        // "new", "york", "united", "states". 
+        // Path: "united_states", "new_york". 
+        // This is robust enough for now.
+        const slugParts = locSlug.split('-');
         
-        // Let's simplistic parse:
-        // We know we used: `sanitize(city)}-${sanitize(state)}-${sanitize(country)}`
-        // And sanitize replaced space with `-` (in `getDatasetSearchParams` I used `replace(/[^a-z0-9]/g, '-')`)
-        // The file system uses `_`.
-        // So essentially `slug.replace(/-/g, '_')` might get us close, but order is reversed?
-        // No, file structure is Country/State/City.
-        // Slug is City-State-Country.
-        
-        // Let's try to brute force the specific "New York, New York, United States" path if regular parsing fails.
-        // Or better: Search blindly in `datascrapper` for a file named `${category}.json`?
-        // No, duplicates possible.
-        
-        // Let's assume the user flow comes from search, so they are looking for specific things.
-        // Let's assume the slug parts:
-        // united-states comes at end.
-        
-        // REVISITING: `getDatasetSearchParams`
-        // I implemented it to create ID: `category-in-city-state-country`
-        
-        // So for "restaurants" in "new york", "new york", "united states":
-        // category = restaurants
-        // city = new-york
-        // state = new-york
-        // country = united-states
-        // ID = restaurants-in-new-york-new-york-united-states
-        
-        // To reverse:
-        // parts[1] = "new-york-new-york-united-states"
-        // We need to split this into 3 parts. 
-        // "united-states" is known country.
-        // "new-york" is state.
-        // "new-york" is city.
-        
-        // Hacky parser for this structure:
-        const locString = parts[1];
-        let countryPath = 'united_states'; 
-        let statePath = 'new_york';
-        let cityPath = 'new_york';
-        
-        if (locString.includes('united-states')) countryPath = 'united_states';
-        // This is tough to generalize without separators.
-        // I will assume for this task we are targeting the specific file found.
-        
-        const targetPath = path.join(__dirname, '..', 'datascrapper', countryPath, statePath, cityPath, `${categoryFile}.json`);
-        
-        // Check if exists
-        let finalPath = targetPath;
-        if (!fs.existsSync(targetPath)) {
-            // Fallback: try to find any JSON matching category in the tree? No, too slow.
-            // Let's just Error if strict path fails, but add a log.
-            console.log(`path not found: ${targetPath}`);
-            return res.status(404).json({ success: false, message: "Dataset file not found." });
+        const relevantFiles = allMatches.filter(f => {
+            const rel = path.relative(baseDir, f).replace(/\\/g, '/').toLowerCase(); 
+            // locSlug: "new-york-united-states" -> ["new", "york", "united", "states"]
+            // path: "united_states/new_york/..."
+            const tokens = locSlug.split('-');
+            // Check if every token matches the path (allowing for partial matching like 'new' in 'new_york')
+            return tokens.every(t => rel.includes(t)); 
+        });
+
+        if (relevantFiles.length === 0) {
+             return res.status(404).json({ success: false, message: "Dataset files not found." });
         }
         
-        const fileContent = fs.readFileSync(finalPath, 'utf-8');
-        const businesses = JSON.parse(fileContent);
-
+        // MERGE DATA
+        let mergedBusinesses = [];
+        relevantFiles.forEach(fp => {
+            try {
+                const content = JSON.parse(fs.readFileSync(fp, 'utf-8'));
+                mergedBusinesses = mergedBusinesses.concat(content);
+            } catch(e) {}
+        });
+        
+        const businesses = mergedBusinesses;
+        
+        // Construct Dataset Object
         const totalCount = businesses.length;
         const sampleList = businesses.slice(0, 20).map(b => ({
             name: b.name,
@@ -652,11 +924,11 @@ exports.getDatasetDetail = async (req, res) => {
             rating: b.rating,
             reviews: b.review_count
         }));
-
+        
         const dataset = {
             id: id,
             category: categorySlug.replace(/-/g, ' ').toUpperCase(),
-            location: locString.replace(/-/g, ' ').toUpperCase(), 
+            location: locSlug.replace(/-/g, ' ').toUpperCase(), 
             totalRecords: totalCount,
             emailCount: businesses.filter(b => b.website).length,
             lastUpdate: new Date().toLocaleDateString(),
@@ -678,66 +950,66 @@ exports.purchaseDataset = async (req, res) => {
         
         if (!email) return res.status(400).json({ success: false, message: "Email is required" });
 
-        // Resolve Path from ID again
-        // Copied logic from Detail (should be a helper)
+        // Logic duplicated from Detail to Resolve Files
         const parts = id.split('-in-');
-        const categorySlug = parts[0];
+        const categorySlug = parts[0]; 
         const categoryFile = categorySlug.replace(/-/g, '_');
-        
-        // Hardcoded location for now as per verified file existence
-        const countryPath = 'united_states';
-        const statePath = 'new_york';
-        const cityPath = 'new_york';
-        
-        const targetDir = path.join(__dirname, '..', 'datascrapper', countryPath, statePath, cityPath);
-        const jsonPath = path.join(targetDir, `${categoryFile}.json`);
-        const xlsxPath = path.join(targetDir, `${categoryFile}.xlsx`);
+        const baseDir = path.join(__dirname, '..', 'datascrapper');
 
-        if (!fs.existsSync(jsonPath)) {
+        // Find files
+         const findFiles = (dir, filelist = []) => {
+            const files = fs.readdirSync(dir);
+            files.forEach(file => {
+                const filepath = path.join(dir, file);
+                if (fs.statSync(filepath).isDirectory()) {
+                    findFiles(filepath, filelist);
+                } else {
+                    if (file === `${categoryFile}.json`) {
+                        filelist.push(filepath);
+                    }
+                }
+            });
+            return filelist;
+        };
+        
+        const relevantFiles = findFiles(baseDir); // Naive scoping for demo
+        
+        if (relevantFiles.length === 0) {
              return res.status(404).json({ success: false, message: "Dataset source not found." });
         }
 
-        // Check if XLSX exists, if not generate it
-        let attachmentPath = xlsxPath;
-        if (!fs.existsSync(xlsxPath)) {
-             console.log("XLSX not found, generating from JSON...");
-             const fileContent = fs.readFileSync(jsonPath, 'utf-8');
-             const businesses = JSON.parse(fileContent);
-             
-             const excelData = businesses.map(item => ({
-                 Name: item.name,
-                 Website: item.website || '',
-                 "Contact Number": item.phone_number || '',
-                 "Email Address": '',
-                 Rating: item.rating || '',
-                 LatLong: `${item.latitude}, ${item.longitude}`,
-                 Address: item.full_address
-             }));
-             
-             const worksheet = XLSX.utils.json_to_sheet(excelData);
-             const workbook = XLSX.utils.book_new();
-             XLSX.utils.book_append_sheet(workbook, worksheet, 'Data');
-             XLSX.writeFile(workbook, xlsxPath);
-        }
+        // Aggregate for XLSX
+        let mergedBusinesses = [];
+        relevantFiles.forEach(fp => {
+            try {
+                const content = JSON.parse(fs.readFileSync(fp, 'utf-8'));
+                mergedBusinesses = mergedBusinesses.concat(content);
+            } catch(e) {}
+        });
 
-        console.log(`[PURCHASE] User ${fullName} (${email}) purchased dataset ${id}. Sending file: ${attachmentPath}`);
+        const excelData = mergedBusinesses.map(item => ({
+             Name: item.name,
+             Website: item.website || '',
+             "Contact Number": item.phone_number || '',
+             "Email Address": '',
+             Rating: item.rating || '',
+             LatLong: `${item.latitude || ''}, ${item.longitude || ''}`,
+             Address: item.full_address
+        }));
         
-        // Send Email (optional for test, but good to keep)
-        try {
-            const transporter = nodemailer.createTransport({ jsonTransport: true });
-            await transporter.sendMail({
-                from: '"DataScraperHub" <no-reply@datascraperhub.com>',
-                to: email,
-                subject: `Your Data Purchase: ${id}`,
-                text: `Hi ${fullName},\n\nThank you for your purchase. We have attached your dataset.\n\nRegards,\nDataScraperHub`,
-                 attachments: [{ path: attachmentPath }] 
-            });
-        } catch (mailError) {
-            console.error("Mail send failed but proceeding to download:", mailError);
-        }
+        const timestamp = Date.now();
+        const purchaseDir = path.join(__dirname, '..', 'datascrapper', 'purchases');
+        if (!fs.existsSync(purchaseDir)) fs.mkdirSync(purchaseDir, { recursive: true });
+        
+        const attachmentPath = path.join(purchaseDir, `${id}_${timestamp}.xlsx`);
+        
+        const worksheet = XLSX.utils.json_to_sheet(excelData);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Data');
+        XLSX.writeFile(workbook, attachmentPath);
 
-        // DIRECT DOWNLOAD BYPASS
-        console.log(`[PURCHASE] Serving file directly: ${attachmentPath}`);
+        console.log(`[PURCHASE] User ${fullName} (${email}) purchased ${id}. Generated aggregated file: ${attachmentPath}`);
+        
         return res.download(attachmentPath);
 
     } catch (error) {

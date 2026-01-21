@@ -1,0 +1,19 @@
+[
+  {
+    "_id": "69707d955dee084c411a7567",
+    "place_id": "ChIJj7xt6E4nWTkRHj_BoNdKX4Y",
+    "__v": 0,
+    "createdAt": "2026-01-21T07:17:41.939Z",
+    "full_address": "SANJARI COMPLEX, Main Bazar, Ranpur, Gujarat 382245, India",
+    "latitude": 22.3510726,
+    "longitude": 71.7102441,
+    "name": "SHUBHAM JEWELLERY",
+    "phone_number": "097147 15474",
+    "photos_sample": [],
+    "query": "Jewelry stores",
+    "rating": 5,
+    "review_count": 21,
+    "type": "jewelry_store",
+    "website": "https://www.instagram.com/shubhamjewelleryshopranpur?igsh=MW1uN2ttMnFwaHZvNQ=="
+  }
+]
