@@ -917,7 +917,7 @@ exports.getDatasetDetail = async (req, res) => {
             address: b.full_address,
             city: b.full_address ? b.full_address.split(',').slice(-3, -2)[0]?.trim() || 'N/A' : 'N/A',
             state: b.full_address ? b.full_address.split(',').slice(-2, -1)[0]?.trim() || 'N/A' : 'N/A',
-            country: 'USA', 
+            country: b.full_address ? b.full_address.split(',').pop().trim() : 'N/A', 
             email: null, 
             website: b.website || null,
             phone: b.phone_number || null,
