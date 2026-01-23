@@ -31,7 +31,7 @@ app.use((err, req, res, next) => {
     errorResponse(res, 'Something broke!', 500, err.message);
 });
 
-const PORT = 5000;
+const PORT = 6969;
 
 // Connect to Database before listening
 connectDB().then(() => {
