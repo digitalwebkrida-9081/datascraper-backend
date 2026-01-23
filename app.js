@@ -15,7 +15,7 @@ const scraperRoutes = require('./routes/scraper');
 const cors = require('cors'); 
 
 // Middleware
-app.use(cors()); // Enable CORS for frontend access
+app.use(cors({origin: '*', methods: ['GET', 'POST', 'PUT', 'DELETE']})); // Enable CORS for frontend access
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

@@ -3,7 +3,7 @@ const axios = require('axios');
 async function testScraper() {
     try {
         console.log('Sending request to scraper...');
-        const response = await axios.post('http://localhost:5000/api/scraper/search', {
+        const response = await axios.post('http://stagservice.datasellerhub.com/api/scraper/search', {
             query: 'barber shop in kodinar'
         });
         
