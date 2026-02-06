@@ -12,10 +12,11 @@ const categoryRoutes = require('./routes/category');
 const locationRoutes = require('./routes/location');
 const b2bRoutes = require('./routes/b2b_database');
 const scraperRoutes = require('./routes/scraper'); 
+const formRoutes = require('./routes/formSubmission');
 const cors = require('cors'); 
 
 // Middleware
-app.use(cors()); // Enable CORS for frontend access
+app.use(cors({origin: '*', methods: ['GET', 'POST', 'PUT', 'DELETE']})); // Enable CORS for frontend access
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -24,6 +25,7 @@ app.use('/api/category', categoryRoutes);
 app.use('/api/location', locationRoutes);
 app.use('/api/b2b-leads', b2bRoutes);
 app.use('/api/scraper', scraperRoutes); // Mount scraper routes
+app.use('/api/forms', formRoutes);
 
 // Global Error Handler
 app.use((err, req, res, next) => {
@@ -31,7 +33,7 @@ app.use((err, req, res, next) => {
     errorResponse(res, 'Something broke!', 500, err.message);
 });
 
-const PORT = 5000;
+const PORT = 6969;
 
 // Connect to Database before listening
 connectDB().then(() => {

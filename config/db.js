@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const connectDB = async () => {
     try {
-        const mongoURI = process.env.MONGO_URI || 'mongodb://localhost:27017/datascrapper';
+        const mongoURI =   "mongodb://admin:Qwerty%23786@15.235.224.91:27017/datascrapper?authSource=admin";
         await mongoose.connect(mongoURI);
         console.log('MongoDB Connected Successfully');
     } catch (err) {

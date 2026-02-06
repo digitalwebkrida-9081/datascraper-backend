@@ -7,6 +7,7 @@ const path = require('path');
 const axios = require('axios');
 const XLSX = require('xlsx');
 const GoogleBusiness = require('../models/GoogleBusiness');
+const FormSubmission = require('../models/FormSubmission');
 const { ensureLocationsExist } = require('../utils/locationHelper');
 
 exports.searchGoogleMaps = async (req, res) => {
@@ -1009,6 +1010,24 @@ exports.purchaseDataset = async (req, res) => {
         XLSX.writeFile(workbook, attachmentPath);
 
         console.log(`[PURCHASE] User ${fullName} (${email}) purchased ${id}. Generated aggregated file: ${attachmentPath}`);
+
+        // Save to Form Submissions
+        try {
+            await FormSubmission.create({
+                type: 'purchase_attempt',
+                name: fullName,
+                email: email,
+                phone: phoneNumber,
+                datasetDetails: {
+                    id: id,
+                    category: categorySlug,
+                    price: "$199"
+                }
+            });
+        } catch (dbError) {
+            console.error('Error saving purchase submission to DB:', dbError);
+            // Don't block the download if DB save fails
+        }
         
         return res.download(attachmentPath);
 
