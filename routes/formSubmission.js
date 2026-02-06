@@ -45,4 +45,24 @@ router.get('/all', async (req, res) => {
     }
 });
 
+// @route   DELETE /api/forms/:id
+// @desc    Delete a form submission
+// @access  Public (Should be protected)
+router.delete('/:id', async (req, res) => {
+    try {
+        const submission = await FormSubmission.findById(req.params.id);
+
+        if (!submission) {
+            return errorResponse(res, 'Submission not found', 404);
+        }
+
+        await FormSubmission.findByIdAndDelete(req.params.id);
+
+        return successResponse(res, null, 'Submission deleted successfully');
+    } catch (error) {
+        console.error('Error deleting submission:', error);
+        return errorResponse(res, 'Internal Server Error', 500, error.message);
+    }
+});
+
 module.exports = router;
