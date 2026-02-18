@@ -1,10 +1,39 @@
 const B2BLead = require('../models/B2BLead');
 const { successResponse, errorResponse } = require('../common/helper/responseHelper');
 
-// Get all B2B Leads
+// Get all B2B Leads with Filters
 exports.getAllLeads = async (req, res) => {
     try {
-        const leads = await B2BLead.find().sort({ createdAt: -1 });
+        const { country, city, state, category } = req.query;
+        let filter = {};
+
+        // Filter by Category
+        if (category) {
+            filter.category = { $regex: category, $options: 'i' };
+        }
+
+        // Filter by Location (Country, City, State) across the single 'location' field
+        // We accumulate location terms to ensure the record matches all provided location parts
+        const locationTerms = [country, city, state].filter(Boolean);
+        if (locationTerms.length > 0) {
+            const locationConditions = locationTerms.map(term => ({
+                $or: [
+                    { location: { $regex: term, $options: 'i' } },
+                    { "sampleList.country": { $regex: term, $options: 'i' } },
+                    { "sampleList.city": { $regex: term, $options: 'i' } },
+                    { "sampleList.state": { $regex: term, $options: 'i' } },
+                    { "sampleList.address": { $regex: term, $options: 'i' } }
+                ]
+            }));
+            
+            if (filter.$and) {
+                filter.$and.push(...locationConditions);
+            } else {
+                filter.$and = locationConditions;
+            }
+        }
+
+        const leads = await B2BLead.find(filter).sort({ createdAt: -1 });
         // If empty, we can return empty array or successResponse
         successResponse(res, leads, 'B2B Leads fetched successfully');
     } catch (error) {
@@ -38,3 +67,4 @@ exports.createLead = async (req, res) => {
         errorResponse(res, 'Failed to create lead', 500, error.message);
     }
 };
+

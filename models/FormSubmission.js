@@ -26,6 +26,11 @@ const formSubmissionSchema = new mongoose.Schema({
         type: Object, // Store JSON details about the dataset they were interested in
         required: false
     },
+    status: {
+        type: String,
+        enum: ['new', 'contacted', 'converted', 'closed'],
+        default: 'new'
+    },
     createdAt: {
         type: Date,
         default: Date.now

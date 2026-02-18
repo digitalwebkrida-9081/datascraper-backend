@@ -65,4 +65,53 @@ router.delete('/:id', async (req, res) => {
     }
 });
 
+// @route   PUT /api/forms/:id/status
+// @desc    Update a lead's status
+// @access  Public (Should be protected)
+router.put('/:id/status', async (req, res) => {
+    try {
+        const { status } = req.body;
+        const validStatuses = ['new', 'contacted', 'converted', 'closed'];
+        
+        if (!validStatuses.includes(status)) {
+            return errorResponse(res, 'Invalid status value', 400);
+        }
+
+        const submission = await FormSubmission.findByIdAndUpdate(
+            req.params.id,
+            { status },
+            { new: true }
+        );
+
+        if (!submission) {
+            return errorResponse(res, 'Submission not found', 404);
+        }
+
+        return successResponse(res, submission, 'Status updated successfully');
+    } catch (error) {
+        console.error('Error updating status:', error);
+        return errorResponse(res, 'Internal Server Error', 500, error.message);
+    }
+});
+
+// @route   POST /api/forms/bulk-delete
+// @desc    Delete multiple form submissions
+// @access  Public (Should be protected)
+router.post('/bulk-delete', async (req, res) => {
+    try {
+        const { ids } = req.body;
+        
+        if (!ids || !Array.isArray(ids) || ids.length === 0) {
+            return errorResponse(res, 'Array of IDs is required', 400);
+        }
+
+        const result = await FormSubmission.deleteMany({ _id: { $in: ids } });
+
+        return successResponse(res, { deletedCount: result.deletedCount }, `${result.deletedCount} submissions deleted`);
+    } catch (error) {
+        console.error('Error bulk deleting:', error);
+        return errorResponse(res, 'Internal Server Error', 500, error.message);
+    }
+});
+
 module.exports = router;

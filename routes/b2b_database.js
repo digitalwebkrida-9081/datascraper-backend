@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const b2bController = require('../controllers/b2bController');
 
+
 // Get All Leads
 router.get('/', b2bController.getAllLeads);
 

@@ -689,6 +689,214 @@ exports.getStoredBusinesses = async (req, res) => {
 
 // --- DATASET ENDPOINTS ---
 
+exports.getDatasetFilterOptions = async (req, res) => {
+    try {
+        const { scope, country, state, city } = req.query;
+        const baseDir = path.join(__dirname, '..', 'datascrapper');
+        
+        // Helper to get directories
+        const getDirs = (source) => {
+            if (!fs.existsSync(source)) return [];
+            return fs.readdirSync(source, { withFileTypes: true })
+                .filter(dirent => dirent.isDirectory())
+                .map(dirent => dirent.name)
+                .filter(name => !['misc', 'coordinates', 'purchases', '.git'].includes(name));
+        };
+
+        // Helper to get JSON files (categories)
+        const getFiles = (source) => {
+            if (!fs.existsSync(source)) return [];
+            return fs.readdirSync(source, { withFileTypes: true })
+                .filter(dirent => !dirent.isDirectory() && dirent.name.endsWith('.json') && !dirent.name.endsWith('.metadata.json'))
+                .map(dirent => dirent.name.replace('.json', ''));
+        };
+
+        const sanitize = (name) => (name || '').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        
+        let options = [];
+        
+        if (scope === 'country') {
+            options = getDirs(baseDir);
+        } else if (scope === 'state' && country) {
+            const countryDir = path.join(baseDir, sanitize(country));
+            options = getDirs(countryDir);
+        } else if (scope === 'city' && country && state) {
+            const stateDir = path.join(baseDir, sanitize(country), sanitize(state));
+            options = getDirs(stateDir);
+        } else if (scope === 'category') { // Category can now range from Country -> City
+            if (country) {
+                let targetDir = path.join(baseDir, sanitize(country));
+                if (state) targetDir = path.join(targetDir, sanitize(state));
+                if (city) targetDir = path.join(targetDir, sanitize(city));
+                
+                if (fs.existsSync(targetDir)) {
+                     // Recursive unique category search
+                      const getAllCategories = (dir) => {
+                          const cats = new Set();
+                          const walk = (d) => {
+                              const files = fs.readdirSync(d);
+                              files.forEach(f => {
+                                  const fp = path.join(d, f);
+                                  if (fs.statSync(fp).isDirectory()) {
+                                      if (!['misc','coordinates','purchases','.git'].includes(f)) walk(fp);
+                                  } else if (f.endsWith('.json') && !f.endsWith('.metadata.json')) {
+                                      cats.add(f.replace('.json', ''));
+                                  }
+                              });
+                          };
+                          walk(dir);
+                          return Array.from(cats);
+                      }
+                      options = getAllCategories(targetDir);
+                }
+            } else {
+                // Return all categories globally (Optional, might be slow)
+                // For now, require Country at least
+            }
+        }
+
+        // Format for frontend (Capitalize for display)
+        const cleanName = (str) => str.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        
+        const data = options.map(opt => ({
+            value: opt, // Keep raw value (folder name) for logic? Or just using the sanitized/raw relation?
+                        // Actually, the folder names ARE the values we use in logic.
+                        // But wait, "united_states" -> "United States". 
+                        // If frontend sends "United States" back to API, API sanitizes it to "united_states".
+                        // So it's safe to send "United States" as value too if we want, OR send "united_states".
+                        // Let's send { value: "united_states", label: "United States" }
+            label: cleanName(opt),
+            value: opt 
+        }));
+
+        return res.json({ success: true, data });
+
+    } catch (error) {
+        console.error("Error fetching filter options:", error);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+exports.getAdminDatasets = async (req, res) => {
+    try {
+        const { country, city, state, category, page = 1, limit = 10 } = req.query;
+        const pageNum = parseInt(page);
+        const limitNum = parseInt(limit);
+        const skip = (pageNum - 1) * limitNum;
+
+        const baseDir = path.join(__dirname, '..', 'datascrapper');
+        
+        if (!fs.existsSync(baseDir)) {
+            return res.json({ success: true, data: [], pagination: { total: 0, page: pageNum, limit: limitNum, totalPages: 0 } });
+        }
+
+        const sanitize = (name) => (name || '').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        
+        // Helper to recursively find JSON files
+        const findDatasets = (dir, filelist = []) => {
+            const files = fs.readdirSync(dir);
+            files.forEach(file => {
+                const filepath = path.join(dir, file);
+                const stat = fs.statSync(filepath);
+                if (stat.isDirectory()) {
+                    // optimization: if specific location filters are applied, only traverse matching folders?
+                     // validation to avoid scanning massive unrelated folders? baseDir should be clean.
+                    findDatasets(filepath, filelist);
+                } else {
+                    if (file.endsWith('.json') && !file.endsWith('.metadata.json')) {
+                        filelist.push(filepath);
+                    }
+                }
+            });
+            return filelist;
+        };
+
+        let allFiles = findDatasets(baseDir);
+        let datasets = [];
+
+        for (const filepath of allFiles) {
+             // Extract metadata from path or file
+             const relativePath = path.relative(baseDir, filepath);
+             const parts = relativePath.split(path.sep);
+             
+             let dCountry = '', dState = '', dCity = '', dCategory = '';
+             
+             if (parts.length >= 4) {
+                 dCountry = parts[0];
+                 dState = parts[1];
+                 dCity = parts[2];
+                 dCategory = parts[3].replace('.json', '');
+             } else {
+                 // misc or partial
+                 dCategory = parts[parts.length - 1].replace('.json', '');
+                 dCountry = parts[0];
+             }
+
+             // Apply Filters (Simple substring/clean match)
+            if (country && !dCountry.toLowerCase().includes(sanitize(country))) continue;
+            if (state && !dState.toLowerCase().includes(sanitize(state))) continue;
+            if (city && !dCity.toLowerCase().includes(sanitize(city))) continue;
+            if (category && !dCategory.toLowerCase().includes(sanitize(category))) continue;
+
+             try {
+                 const stat = fs.statSync(filepath);
+                 // OPTIMIZATION: Don't read full content yet if we can avoid it, 
+                 // but we need 'totalRecords' which is inside. 
+                 // For now, allow reading.
+                 const content = fs.readFileSync(filepath, 'utf-8');
+                 const data = JSON.parse(content);
+                 
+                 const cleanName = (str) => str.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+                 // Read Metadata if exists
+                 let filePrice = "$199";
+                 const metaPath = filepath.replace('.json', '.metadata.json');
+                 if (fs.existsSync(metaPath)) {
+                     try {
+                         const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+                         if (meta.price) filePrice = meta.price;
+                     } catch(e) {}
+                 }
+
+                 datasets.push({
+                     _id: relativePath.replace(/\\/g, '/'),
+                     location: `${cleanName(dCity)}, ${cleanName(dState)}, ${cleanName(dCountry)}`,
+                     category: cleanName(dCategory),
+                     totalRecords: data.length,
+                     price: filePrice, 
+                     lastUpdate: stat.mtime,
+                     sampleList: data.slice(0, 3) 
+                 });
+             } catch (e) {
+                 console.error("Error parsing dataset:", filepath);
+             }
+        }
+
+        // Sort by date desc
+        datasets.sort((a, b) => new Date(b.lastUpdate) - new Date(a.lastUpdate));
+
+        // PAGINATION LOGIC
+        const total = datasets.length;
+        const totalPages = Math.ceil(total / limitNum);
+        const paginatedData = datasets.slice(skip, skip + limitNum);
+
+        return res.json({ 
+            success: true, 
+            data: paginatedData,
+            pagination: {
+                total,
+                page: pageNum,
+                limit: limitNum,
+                totalPages
+            }
+        });
+
+    } catch (error) {
+        console.error("Error fetching admin datasets:", error);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 exports.getDatasetSearchParams = async (req, res) => {
     try {
         const { country, state, city, category } = req.query;
@@ -799,58 +1007,180 @@ exports.getDatasetSearchParams = async (req, res) => {
 
             return {
                 id: id,
+                name: `List Of ${toTitleCase(catClean)} in ${toTitleCase(locDisplay)}`,
                 category: toTitleCase(catClean),
-                location: locDisplay, // Broad location
+                location: toTitleCase(locDisplay),
                 totalRecords: group.totalRecords,
                 emailCount: group.emailCount,
                 phones: group.phones,
-                lastUpdate: new Date(group.lastUpdate).toLocaleDateString(),
-                price: "$199"
+                lastUpdate: group.lastUpdate ? new Date(group.lastUpdate).toLocaleDateString() : 'N/A',
+                price: '$299', // Placeholder or calculate based on count
+                filePaths: group.filePaths
             };
         });
 
-        return res.status(200).json({ success: true, datasets });
+        // Sorting: by totalRecords desc
+        datasets.sort((a, b) => b.totalRecords - a.totalRecords);
 
+        res.json({
+            success: true,
+            datasets: datasets,
+            count: datasets.length
+        });
 
     } catch (error) {
-        console.error('Error fetching dataset params:', error);
-        return res.status(500).json({ success: false, message: "Server Error", error: error.message });
+        console.error('Error in dataset search:', error);
+        res.status(500).json({ success: false, message: "Dataset search failed", error: error.message });
     }
 };
+
+exports.getGlobalDatasetStats = async (req, res) => {
+    try {
+        const { page = 1, limit = 10, search = '' } = req.query;
+        const pageNum = parseInt(page);
+        const limitNum = parseInt(limit);
+        const skip = (pageNum - 1) * limitNum;
+        
+        const baseDir = path.join(__dirname, '..', 'datascrapper');
+        
+        if (!fs.existsSync(baseDir)) {
+             return res.status(200).json({ 
+                 success: true, 
+                 data: {
+                     summary: { totalLeads: 0, totalRecords: 0, totalEmails: 0, totalPhones: 0, uniqueLocations: 0 },
+                     details: [],
+                     pagination: { total: 0, page: pageNum, limit: limitNum, totalPages: 0 }
+                 }
+             });
+        }
+
+        // Recursive scan
+        const walkSync = (dir, filelist = []) => {
+            const files = fs.readdirSync(dir);
+            files.forEach(file => {
+                const filepath = path.join(dir, file);
+                if (fs.statSync(filepath).isDirectory()) {
+                    walkSync(filepath, filelist);
+                } else {
+                    if (file.endsWith('.json') && !file.endsWith('.metadata.json')) {
+                        filelist.push(filepath);
+                    }
+                }
+            });
+            return filelist;
+        };
+
+        const allFiles = walkSync(baseDir);
+        let globalStats = {
+            totalLeads: 0,
+            totalRecords: 0,
+            totalEmails: 0,
+            totalPhones: 0,
+            uniqueLocations: 0,
+            uniqueCategories: 0
+        };
+
+        const uniqueLocs = new Set();
+        const uniqueCats = new Set();
+        let detailedStats = [];
+
+        allFiles.forEach(filepath => {
+            try {
+                 const relPath = path.relative(baseDir, filepath);
+                 const parts = relPath.split(path.sep);
+
+                 if (parts.length >= 2) {
+                     const category = parts[parts.length - 1].replace('.json', '');
+                     const locationParts = parts.slice(0, parts.length - 1);
+                     
+                     const toTitle = (s) => (s||'').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                     const location = locationParts.map(toTitle).reverse().join(', ');
+
+                     const content = fs.readFileSync(filepath, 'utf-8');
+                     const data = JSON.parse(content);
+
+                     const records = data.length || 0;
+                     const emailCount = data.filter(d => d.email || d.email_address || d.contact_email || d.website).length; // Keeping logic broad
+                     const phoneCount = data.filter(d => d.phone_number || d.phone).length;
+
+                     // Metadata Price (Optional)
+                     let price = '$299';
+                     let previousPrice = '$598'; 
+
+                     // Update Global Stats
+                     globalStats.totalLeads++;
+                     globalStats.totalRecords += records;
+                     globalStats.totalEmails += emailCount;
+                     globalStats.totalPhones += phoneCount;
+                     
+                     uniqueLocs.add(location);
+                     uniqueCats.add(category);
+
+                     // Push to Details
+                     detailedStats.push({
+                         category: toTitle(category),
+                         location: location,
+                         totalLeads: 1, 
+                         totalRecords: records, 
+                         totalEmails: emailCount,
+                         totalPhones: phoneCount,
+                         price: price, 
+                         previousPrice: previousPrice,
+                         filePaths: [filepath] 
+                     });
+                 }
+            } catch (err) { }
+        });
+
+        globalStats.uniqueLocations = uniqueLocs.size;
+        globalStats.uniqueCategories = uniqueCats.size;
+
+        // --- FILTERING & PAGINATION ---
+        if (search) {
+            const lowerSearch = search.toLowerCase();
+            detailedStats = detailedStats.filter(item => 
+                item.category.toLowerCase().includes(lowerSearch) || 
+                item.location.toLowerCase().includes(lowerSearch)
+            );
+        }
+
+        const total = detailedStats.length;
+        const totalPages = Math.ceil(total / limitNum);
+        const paginatedDetails = detailedStats.slice(skip, skip + limitNum);
+
+        res.json({
+            success: true,
+            data: {
+                summary: globalStats,
+                details: paginatedDetails,
+                pagination: {
+                    total,
+                    page: pageNum,
+                    limit: limitNum,
+                    totalPages
+                }
+            }
+        });
+
+    } catch (error) {
+         console.error('Error fetching global stats:', error);
+         res.status(500).json({ success: false, message: "Failed to fetch stats", error: error.message });
+    }
+};
+
+// Helper to get metadata file path
+const getMetadataPath = (jsonFilePath) => jsonFilePath.replace('.json', '.metadata.json');
 
 exports.getDatasetDetail = async (req, res) => {
     try {
         const { id } = req.params;
-        // ID format: category-in-scope (where scope could be city-state-country OR just state-country OR just country)
         const parts = id.split('-in-');
         if (parts.length < 2) return res.status(404).json({ success: false, message: "Invalid Dataset ID" });
         
         const categorySlug = parts[0]; 
         const locSlug = parts[1];
         
-        // Reverse engineer location path from locSlug
-        // locSlug "united-states" -> united_states
-        // locSlug "new-york-united-states" -> united_states/new_york
-        // locSlug "new-york-new-york-united-states" -> united_states/new_york/new_york
-        
-        // Since we don't know the exact split (hyphens in names), we can try to "find" the directory.
-        // Helper: convert slug hyphens to search path underscores or whatever matches.
-        // Simplified Logic: The slug IS built from sanitized parts which used underscores on disk but hyphens in URL.
-        // BUT my sanitize used underscores for disk, and urlSanitize used hyphens for URL.
-        // So replacing - with _ might work IF names don't have hyphens.
-        
-        // Better approach: We know `datascrapper` structure.
-        // We can walk `datascrapper` and match the paths that "end with" the locSlug parts? No, ambiguous.
-        
-        // Let's TRY to split locSlug by known delimiters? No delimiters.
-        // Let's Assume the parts are "Country", "State", "City" in reverse order of specificity?
-        // Actually, let's just search for the category FILE recursively from the BEST GUESS directory.
-        
-        // Safe bet: Start from `datascrapper`. Find ALL files that match `categorySlug` (normalized).
-        // Then filtering those whose path *contains* the locSlug parts? 
-        // e.g. "united-states" -> paths having "united_states".
-        
-        const categoryFile = categorySlug.replace(/-/g, '_'); // restaurants -> restaurants
+        const categoryFile = categorySlug.replace(/-/g, '_'); 
         const baseDir = path.join(__dirname, '..', 'datascrapper');
         
         // Recursive FIND all matching category files
@@ -870,29 +1200,10 @@ exports.getDatasetDetail = async (req, res) => {
         };
         
         let allMatches = findFiles(baseDir);
-        
-        // Filter matches based on locSlug
-        // This is the tricky part. `locSlug` = "united-states". We want all files under `united_states`.
-        // `locSlug` = "new-york-united-states". We want files under `united_states/new_york`.
-        // Normalized match: convert locSlug to underscore? 
-        const normalizedLoc = locSlug.replace(/-/g, '_');
-        
-        // We filter files where the path includes the normalizedLoc? 
-        // "united_states" is in "d:/.../datascrapper/united_states/..." -> YES.
-        // "new_york_united_states" -> path "united_states/new_york" -> `path.join` segments check?
-        
-        // Let's require that ALL segments of the slug (split by -) appear in the path? 
-        // "new", "york", "united", "states". 
-        // Path: "united_states", "new_york". 
-        // This is robust enough for now.
-        const slugParts = locSlug.split('-');
+        const tokens = locSlug.split('-');
         
         const relevantFiles = allMatches.filter(f => {
             const rel = path.relative(baseDir, f).replace(/\\/g, '/').toLowerCase(); 
-            // locSlug: "new-york-united-states" -> ["new", "york", "united", "states"]
-            // path: "united_states/new_york/..."
-            const tokens = locSlug.split('-');
-            // Check if every token matches the path (allowing for partial matching like 'new' in 'new_york')
             return tokens.every(t => rel.includes(t)); 
         });
 
@@ -900,6 +1211,38 @@ exports.getDatasetDetail = async (req, res) => {
              return res.status(404).json({ success: false, message: "Dataset files not found." });
         }
         
+        // READ METADATA
+        // Aggregated datasets (e.g. Country level) are composed of many city files.
+        // We want to find *any* metadata file that has a custom price set by the admin.
+        let metadata = { price: 199, previousPrice: 398 }; // Defaults
+        
+        // Find the most recently updated metadata file to ensure we show the latest price
+        let latestMtime = 0;
+
+        for (const file of relevantFiles) {
+            try {
+                const metaPath = getMetadataPath(file);
+                if (fs.existsSync(metaPath)) {
+                    const stats = fs.statSync(metaPath);
+                    const mtime = stats.mtimeMs;
+                    
+                    // If this metadata file is newer than what we've seen, check if it has a price
+                    if (mtime > latestMtime) {
+                        try {
+                            const metaContent = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+                            if (metaContent.price) {
+                                metadata.price = metaContent.price;
+                                if (metaContent.previousPrice) metadata.previousPrice = metaContent.previousPrice;
+                                latestMtime = mtime; // Update latest valid time
+                            }
+                        } catch (parseErr) {
+                            // Ignore parse errors from individual files
+                        }
+                    }
+                }
+            } catch (e) { }
+        }
+
         // MERGE DATA
         let mergedBusinesses = [];
         relevantFiles.forEach(fp => {
@@ -911,6 +1254,113 @@ exports.getDatasetDetail = async (req, res) => {
         
         const businesses = mergedBusinesses;
         
+        // --- STATE DISTRIBUTION COMPUTATION ---
+        // Country name to ISO code mapping for Highcharts map collection
+        const countryCodeMap = {
+            'india': 'in',
+            'united_states': 'us',
+            'bangladesh': 'bd',
+            'united_kingdom': 'gb',
+            'canada': 'ca',
+            'australia': 'au',
+            'germany': 'de',
+            'france': 'fr',
+            'brazil': 'br',
+            'japan': 'jp',
+            'china': 'cn',
+            'mexico': 'mx',
+            'south_africa': 'za',
+            'indonesia': 'id',
+            'italy': 'it',
+            'spain': 'es',
+            'russia': 'ru',
+            'south_korea': 'kr',
+            'turkey': 'tr',
+            'saudi_arabia': 'sa',
+            'uae': 'ae',
+            'pakistan': 'pk',
+            'nigeria': 'ng',
+            'egypt': 'eg',
+            'thailand': 'th',
+            'vietnam': 'vn',
+            'philippines': 'ph',
+            'malaysia': 'my',
+            'singapore': 'sg',
+            'new_zealand': 'nz',
+            'netherlands': 'nl',
+            'sweden': 'se',
+            'switzerland': 'ch',
+            'poland': 'pl',
+            'argentina': 'ar',
+            'colombia': 'co',
+            'chile': 'cl',
+            'kenya': 'ke',
+            'nepal': 'np',
+            'sri_lanka': 'lk'
+        };
+
+        let stateDistribution = {};
+        let countryCode = null;
+
+        // Try to detect which country directory we're in
+        // Walk relevantFiles to find the country folder
+        try {
+            const countryFolders = fs.readdirSync(baseDir).filter(f => {
+                const fp = path.join(baseDir, f);
+                return fs.statSync(fp).isDirectory() && f !== 'purchases' && f !== 'misc' && f !== 'coordinates';
+            });
+
+            // Find which country folder contains our relevant files
+            let detectedCountry = null;
+            for (const cf of countryFolders) {
+                const cfPath = path.join(baseDir, cf);
+                if (relevantFiles.some(rf => rf.startsWith(cfPath))) {
+                    detectedCountry = cf;
+                    break;
+                }
+            }
+
+            if (detectedCountry) {
+                countryCode = countryCodeMap[detectedCountry] || null;
+                
+                // Walk state-level folders under the country
+                const countryDir = path.join(baseDir, detectedCountry);
+                const stateFolders = fs.readdirSync(countryDir).filter(f => {
+                    return fs.statSync(path.join(countryDir, f)).isDirectory();
+                });
+
+                for (const stateFolder of stateFolders) {
+                    const stateDir = path.join(countryDir, stateFolder);
+                    // Display name: convert underscores to spaces, title case
+                    const stateName = stateFolder.replace(/_/g, ' ').replace(/\b\w/g, s => s.toUpperCase());
+                    
+                    // Count businesses for this category across all city folders in this state
+                    let stateCount = 0;
+                    const walkState = (dir) => {
+                        const entries = fs.readdirSync(dir);
+                        for (const entry of entries) {
+                            const entryPath = path.join(dir, entry);
+                            if (fs.statSync(entryPath).isDirectory()) {
+                                walkState(entryPath);
+                            } else if (entry === `${categoryFile}.json`) {
+                                try {
+                                    const data = JSON.parse(fs.readFileSync(entryPath, 'utf-8'));
+                                    if (Array.isArray(data)) stateCount += data.length;
+                                } catch (e) {}
+                            }
+                        }
+                    };
+                    walkState(stateDir);
+                    
+                    if (stateCount > 0) {
+                        stateDistribution[stateName] = stateCount;
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('Error computing state distribution:', e.message);
+        }
+
         // Construct Dataset Object
         const totalCount = businesses.length;
         const sampleList = businesses.slice(0, 20).map(b => ({
@@ -933,8 +1383,11 @@ exports.getDatasetDetail = async (req, res) => {
             totalRecords: totalCount,
             emailCount: businesses.filter(b => b.website).length,
             lastUpdate: new Date().toLocaleDateString(),
-            price: "$199",
-            sampleList: sampleList
+            price: metadata.price,
+            previousPrice: metadata.previousPrice,
+            sampleList: sampleList,
+            stateDistribution: stateDistribution,
+            countryCode: countryCode
         };
 
         return res.status(200).json({ success: true, data: dataset });
@@ -954,6 +1407,7 @@ exports.purchaseDataset = async (req, res) => {
         // Logic duplicated from Detail to Resolve Files
         const parts = id.split('-in-');
         const categorySlug = parts[0]; 
+        const locSlug = parts[1] || '';
         const categoryFile = categorySlug.replace(/-/g, '_');
         const baseDir = path.join(__dirname, '..', 'datascrapper');
 
@@ -1020,7 +1474,8 @@ exports.purchaseDataset = async (req, res) => {
                 phone: phoneNumber,
                 datasetDetails: {
                     id: id,
-                    category: categorySlug,
+                    category: categorySlug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+                    location: locSlug ? locSlug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '',
                     price: "$199"
                 }
             });
@@ -1034,5 +1489,262 @@ exports.purchaseDataset = async (req, res) => {
     } catch (error) {
         console.error('Error purchasing dataset:', error);
         return res.status(500).json({ success: false, message: "Server Error", error: error.message });
+    }
+};
+
+exports.updateDatasetPrice = async (req, res) => {
+    try {
+        const { id, price, previousPrice, filePath } = req.body;
+        
+        let relevantFiles = [];
+
+        // OPTIMIZED PATH: If filePath is provided, use it directly (resolving relative paths)
+        if (filePath) {
+            let absolutePath = filePath;
+            if (!path.isAbsolute(filePath)) {
+                const baseDir = path.join(__dirname, '..', 'datascrapper');
+                absolutePath = path.join(baseDir, filePath);
+            }
+
+            if (fs.existsSync(absolutePath)) {
+                relevantFiles = [absolutePath];
+            } else {
+                return res.status(404).json({ success: false, message: "Provided file path not found: " + filePath });
+            }
+        } else {
+            // SLOW FALLBACK PATH
+            if (!id) return res.status(400).json({ success: false, message: "Dataset ID is required" });
+            
+            const parts = id.split('-in-');
+            const categorySlug = parts[0]; 
+            const locSlug = parts[1];
+            
+            const categoryFile = categorySlug.replace(/-/g, '_'); 
+            const baseDir = path.join(__dirname, '..', 'datascrapper');
+            
+            const findFiles = (dir, filelist = []) => {
+                const files = fs.readdirSync(dir);
+                files.forEach(file => {
+                    const filepath = path.join(dir, file);
+                    if (fs.statSync(filepath).isDirectory()) {
+                        findFiles(filepath, filelist);
+                    } else {
+                        if (file === `${categoryFile}.json`) {
+                            filelist.push(filepath);
+                        }
+                    }
+                });
+                return filelist;
+            };
+            
+            let allMatches = findFiles(baseDir);
+            const tokens = locSlug.split('-');
+            
+            relevantFiles = allMatches.filter(f => {
+                const rel = path.relative(baseDir, f).replace(/\\/g, '/').toLowerCase(); 
+                return tokens.every(t => rel.includes(t)); 
+            });
+        }
+
+        if (relevantFiles.length === 0) {
+             return res.status(404).json({ success: false, message: "Dataset files not found to update." });
+        }
+        
+        let updatedCount = 0;
+        relevantFiles.forEach(fp => {
+            const metaPath = fp.replace('.json', '.metadata.json');
+            let metadata = {};
+            if (fs.existsSync(metaPath)) {
+                try {
+                    metadata = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+                } catch(e) {}
+            }
+            
+            // Update fields
+            if (price) metadata.price = price;
+            if (previousPrice) metadata.previousPrice = previousPrice;
+            
+            try {
+                fs.writeFileSync(metaPath, JSON.stringify(metadata, null, 2));
+                updatedCount++;
+            } catch(e) {
+                console.error("Failed to write metadata:", metaPath, e);
+            }
+        });
+
+        res.json({ success: true, message: `Updated price for ${updatedCount} dataset(s) successfully.`, updatedCount });
+
+    } catch (error) {
+        console.error("Error updating price:", error);
+        res.status(500).json({ success: false, message: "Failed to update price", error: error.message });
+    }
+};
+exports.getAdminStats = async (req, res) => {
+    try {
+        const baseDir = path.join(__dirname, '..', 'datascrapper');
+        
+        let totalDatasets = 0;
+        let totalRecords = 0;
+        let categories = {};
+        let topLocations = {}; 
+
+        if (!fs.existsSync(baseDir)) {
+             return res.json({ success: true, stats: { totalDatasets: 0, totalRecords: 0, categories: [], topLocations: [] } });
+        }
+
+        const walk = (dir) => {
+            const files = fs.readdirSync(dir);
+            files.forEach(file => {
+                const filepath = path.join(dir, file);
+                const stat = fs.statSync(filepath);
+                if (stat.isDirectory()) {
+                    if (dir === baseDir && !['misc', 'coordinates', 'purchases', '.git'].includes(file)) {
+                        topLocations[file] = (topLocations[file] || 0) + 1; 
+                    }
+                    walk(filepath);
+                } else {
+                    if (file.endsWith('.json') && !file.endsWith('.metadata.json')) {
+                        totalDatasets++;
+                        const category = file.replace('.json', '').replace(/_/g, ' ');
+                        categories[category] = (categories[category] || 0) + 1;
+
+                        try {
+                            const content = fs.readFileSync(filepath, 'utf-8');
+                            const data = JSON.parse(content);
+                            if (Array.isArray(data)) {
+                                totalRecords += data.length;
+                            }
+                        } catch(e) {}
+                    }
+                }
+            });
+        };
+
+        walk(baseDir);
+
+        const sortedCats = Object.entries(categories)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 5)
+            .map(([name, count]) => ({ name, count }));
+
+        return res.json({
+            success: true,
+            stats: {
+                totalDatasets,
+                totalRecords,
+                topCategories: sortedCats
+            }
+        });
+
+    } catch (error) {
+        console.error("Error fetching admin stats:", error);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+exports.getDatasetPreview = async (req, res) => {
+    try {
+        const { pathId } = req.query; 
+        
+        if (!pathId) return res.status(400).json({ success: false, message: "Path ID required" });
+
+        const baseDir = path.join(__dirname, '..', 'datascrapper');
+        
+        const safePath = path.normalize(pathId).replace(/^(\.\.(\/|\\|$))+/, '');
+        const fullPath = path.join(baseDir, safePath);
+
+        if (!fullPath.startsWith(baseDir)) {
+             return res.status(403).json({ success: false, message: "Invalid path" });
+        }
+
+        if (!fs.existsSync(fullPath)) {
+            return res.status(404).json({ success: false, message: "Dataset not found" });
+        }
+
+        const content = fs.readFileSync(fullPath, 'utf-8');
+        const data = JSON.parse(content);
+        
+        const preview = Array.isArray(data) ? data.slice(0, 50) : [];
+        
+        return res.json({ success: true, data: preview });
+
+    } catch (error) {
+        console.error("Error fetching dataset preview:", error);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// Bulk update price for a category in a region
+exports.bulkUpdatePrice = async (req, res) => {
+    try {
+        const { country, state, city, category, price, previousPrice } = req.body;
+
+        if (!category) {
+            return res.status(400).json({ success: false, message: "Category is required for bulk update." });
+        }
+        if (!country) {
+            return res.status(400).json({ success: false, message: "Country is required to limit the scope." });
+        }
+
+        const baseDir = path.join(__dirname, '..', 'datascrapper');
+        
+        // Construct the target directory path
+        let targetDir = baseDir;
+        if (country) targetDir = path.join(targetDir, country.toLowerCase().replace(/ /g, '_'));
+        if (state) targetDir = path.join(targetDir, state.toLowerCase().replace(/ /g, '_'));
+        if (city) targetDir = path.join(targetDir, city.toLowerCase().replace(/ /g, '_'));
+
+        if (!fs.existsSync(targetDir)) {
+            return res.status(404).json({ success: false, message: "Target directory not found." });
+        }
+
+        const targetFile = `${category.toLowerCase().replace(/ /g, '_')}.json`;
+        let updatedCount = 0;
+
+        const walk = (dir) => {
+            const files = fs.readdirSync(dir);
+            files.forEach(file => {
+                const filepath = path.join(dir, file);
+                const stat = fs.statSync(filepath);
+                if (stat.isDirectory()) {
+                     // recursive search
+                     if (!['misc', 'coordinates', 'purchases', '.git'].includes(file)) {
+                        walk(filepath);
+                     }
+                } else {
+                    if (file === targetFile) {
+                        // Found a matching dataset file! Update its metadata.
+                        const metaPath = filepath.replace('.json', '.metadata.json');
+                        let metadata = {};
+                        
+                        if (fs.existsSync(metaPath)) {
+                            try {
+                                metadata = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+                            } catch(e) {}
+                        }
+
+                        // Update fields
+                        if (price) metadata.price = price;
+                        if (previousPrice) metadata.previousPrice = previousPrice;
+                        
+                        // Start tracking modification time if needed, but fs.writeFileSync updates mtime automatically.
+                        try {
+                            fs.writeFileSync(metaPath, JSON.stringify(metadata, null, 2));
+                            updatedCount++;
+                        } catch(e) {
+                            console.error("Failed to write metadata:", metaPath, e);
+                        }
+                    }
+                }
+            });
+        };
+
+        walk(targetDir);
+
+        res.json({ success: true, message: `Bulk updated price for ${updatedCount} dataset(s).` });
+
+    } catch (error) {
+        console.error("Error in bulk update:", error);
+        res.status(500).json({ success: false, message: error.message });
     }
 };
