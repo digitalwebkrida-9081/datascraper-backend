@@ -94,6 +94,30 @@ router.put('/:id/status', async (req, res) => {
     }
 });
 
+// @route   PUT /api/forms/:id/note
+// @desc    Update a lead's note
+// @access  Public (Should be protected)
+router.put('/:id/note', async (req, res) => {
+    try {
+        const { note } = req.body;
+        
+        const submission = await FormSubmission.findByIdAndUpdate(
+            req.params.id,
+            { note },
+            { new: true }
+        );
+
+        if (!submission) {
+            return errorResponse(res, 'Submission not found', 404);
+        }
+
+        return successResponse(res, submission, 'Note updated successfully');
+    } catch (error) {
+        console.error('Error updating note:', error);
+        return errorResponse(res, 'Internal Server Error', 500, error.message);
+    }
+});
+
 // @route   POST /api/forms/bulk-delete
 // @desc    Delete multiple form submissions
 // @access  Public (Should be protected)
