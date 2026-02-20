@@ -13,6 +13,8 @@ const locationRoutes = require('./routes/location');
 const b2bRoutes = require('./routes/b2b_database');
 const scraperRoutes = require('./routes/scraper'); 
 const formRoutes = require('./routes/formSubmission');
+const userRoutes = require('./routes/users');
+const User = require('./models/User');
 const cors = require('cors'); 
 
 // Middleware
@@ -26,6 +28,7 @@ app.use('/api/location', locationRoutes);
 app.use('/api/b2b-leads', b2bRoutes);
 app.use('/api/scraper', scraperRoutes); // Mount scraper routes
 app.use('/api/forms', formRoutes);
+app.use('/api/users', userRoutes);
 
 // Global Error Handler
 app.use((err, req, res, next) => {
@@ -36,7 +39,24 @@ app.use((err, req, res, next) => {
 const PORT = 6969;
 
 // Connect to Database before listening
-connectDB().then(() => {
+connectDB().then(async () => {
+    // Seed default admin if no users exist
+    try {
+        const userCount = await User.countDocuments();
+        if (userCount === 0) {
+            console.log('No users found. Seeding default admin user...');
+            const defaultAdmin = new User({
+                username: 'admin',
+                password: process.env.NEXT_PUBLIC_ADMIN_PASSWORD || 'Dhavan@2911',
+                role: 'admin'
+            });
+            await defaultAdmin.save();
+            console.log('Default admin user created successfully.');
+        }
+    } catch (err) {
+        console.error('Error checking/seeding users:', err);
+    }
+
     app.listen(PORT, () => {
         console.log(`Server is running on port ${PORT}`);
     });

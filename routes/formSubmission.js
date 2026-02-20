@@ -45,6 +45,19 @@ router.get('/all', async (req, res) => {
     }
 });
 
+// @route   GET /api/forms/unread-count
+// @desc    Get count of unread forms
+// @access  Public (Should be protected)
+router.get('/unread-count', async (req, res) => {
+    try {
+        const count = await FormSubmission.countDocuments({ isRead: false });
+        return successResponse(res, { count }, 'Unread count retrieved');
+    } catch (error) {
+        console.error('Error fetching unread count:', error);
+        return errorResponse(res, 'Internal Server Error', 500, error.message);
+    }
+});
+
 // @route   DELETE /api/forms/:id
 // @desc    Delete a form submission
 // @access  Public (Should be protected)
@@ -79,7 +92,7 @@ router.put('/:id/status', async (req, res) => {
 
         const submission = await FormSubmission.findByIdAndUpdate(
             req.params.id,
-            { status },
+            { status, isRead: true },
             { new: true }
         );
 
@@ -103,7 +116,7 @@ router.put('/:id/note', async (req, res) => {
         
         const submission = await FormSubmission.findByIdAndUpdate(
             req.params.id,
-            { note },
+            { note, isRead: true },
             { new: true }
         );
 
