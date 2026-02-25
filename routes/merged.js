@@ -11,7 +11,9 @@ const proxyRequest = async (req, res) => {
         const targetUrl = `${DATA_API_URL}${req.originalUrl}`;
         console.log(`[Proxy] → ${targetUrl}`);
         
-        const response = await axios.get(targetUrl, { timeout: 30000 });
+        // Stats endpoint scans thousands of files, needs more time
+        const timeout = req.path.includes('stats') ? 120000 : 30000;
+        const response = await axios.get(targetUrl, { timeout });
         res.json(response.data);
     } catch (error) {
         console.error('[Proxy] Error:', error.message);

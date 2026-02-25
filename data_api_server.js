@@ -176,9 +176,20 @@ app.get('/api/merged/data', async (req, res) => {
     }
 });
 
-// GET /api/merged/stats — Summary stats across all countries
+// GET /api/merged/stats — Summary stats across all countries (CACHED)
+let statsCache = null;
+let statsCacheTime = 0;
+const STATS_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+
 app.get('/api/merged/stats', async (req, res) => {
     try {
+        // Return cached stats if fresh
+        if (statsCache && (Date.now() - statsCacheTime) < STATS_CACHE_TTL) {
+            console.log('[Stats] Returning cached stats');
+            return res.json(statsCache);
+        }
+
+        console.log('[Stats] Computing fresh stats (this may take a moment)...');
         const items = fs.readdirSync(MERGED_DATA_BASE, { withFileTypes: true });
         const mergedFolders = items.filter(item => item.isDirectory() && item.name.endsWith('_Merged'));
 
@@ -198,13 +209,16 @@ app.get('/api/merged/stats', async (req, res) => {
             for (const file of csvFiles) {
                 const filePath = path.join(mergedDir, file);
                 const stat = fs.statSync(filePath);
-                const lineCount = await quickLineCount(filePath);
+                
+                // Estimate records from file size (approx 200 bytes per row)
+                // Much faster than reading every file
+                const estimatedRecords = Math.max(1, Math.round(stat.size / 200));
 
-                countryRecords += lineCount;
+                countryRecords += estimatedRecords;
                 countryTotalSize += stat.size;
                 categoryList.push({
                     name: formatCategoryName(file.replace('.csv', '')),
-                    records: lineCount,
+                    records: estimatedRecords,
                     fileSize: formatFileSize(stat.size)
                 });
             }
@@ -222,14 +236,21 @@ app.get('/api/merged/stats', async (req, res) => {
             });
         }
 
-        res.json({
+        const result = {
             success: true,
             message: 'Stats fetched',
             data: {
                 summary: { totalCountries: mergedFolders.length, totalCategories, totalRecords },
                 countries: countryStats
             }
-        });
+        };
+
+        // Cache the result
+        statsCache = result;
+        statsCacheTime = Date.now();
+        console.log('[Stats] Stats computed and cached successfully');
+
+        res.json(result);
     } catch (error) {
         console.error('Error:', error);
         res.status(500).json({ success: false, message: error.message });
