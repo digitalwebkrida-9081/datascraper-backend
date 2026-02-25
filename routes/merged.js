@@ -1,17 +1,31 @@
 const express = require('express');
 const router = express.Router();
-const mergedDataController = require('../controllers/mergedDataController');
+const axios = require('axios');
 
-// List all available countries with merged data
-router.get('/countries', mergedDataController.getCountries);
+// Rocky VPS Data API URL (internal, HTTP is fine server-to-server)
+const DATA_API_URL = process.env.DATA_API_URL || 'http://51.210.109.205:7070';
 
-// List categories for a specific country
-router.get('/categories', mergedDataController.getCategories);
+// Proxy all /api/merged/* requests to the Rocky VPS Data API
+const proxyRequest = async (req, res) => {
+    try {
+        const targetUrl = `${DATA_API_URL}${req.originalUrl}`;
+        console.log(`[Proxy] → ${targetUrl}`);
+        
+        const response = await axios.get(targetUrl, { timeout: 30000 });
+        res.json(response.data);
+    } catch (error) {
+        console.error('[Proxy] Error:', error.message);
+        res.status(error.response?.status || 502).json({
+            success: false,
+            message: 'Failed to fetch data from data server',
+            error: error.message
+        });
+    }
+};
 
-// Get paginated data for a specific country + category
-router.get('/data', mergedDataController.getMergedData);
-
-// Get summary stats across all countries
-router.get('/stats', mergedDataController.getMergedStats);
+router.get('/countries', proxyRequest);
+router.get('/categories', proxyRequest);
+router.get('/data', proxyRequest);
+router.get('/stats', proxyRequest);
 
 module.exports = router;
