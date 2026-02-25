@@ -956,8 +956,28 @@ exports.getDatasetSearchParams = async (req, res) => {
         
         allFiles.forEach(file => {
              try {
+                const relPath = path.relative(baseDir, file.path).replace(/\\/g, '/');
+                const pathParts = relPath.split('/');
+                let expectedCity = null;
+                if (pathParts[0] !== 'misc' && pathParts[0] !== 'coordinates' && pathParts.length >= 4) {
+                    expectedCity = pathParts[2].replace(/_/g, ' ').toLowerCase();
+                }
+
                 const fileContent = fs.readFileSync(file.path, 'utf-8');
-                const businesses = JSON.parse(fileContent);
+                let businesses = JSON.parse(fileContent);
+                
+                if (expectedCity) {
+                    businesses = businesses.filter(item => {
+                        if (!item.full_address) return true;
+                        const lowerAddress = item.full_address.toLowerCase();
+                        const parts = item.full_address.split(',');
+                        if (parts.length >= 3) {
+                            const actualCity = parts[parts.length - 3].trim().toLowerCase();
+                            if (actualCity.includes(expectedCity) || expectedCity.includes(actualCity)) return true;
+                        }
+                        return lowerAddress.includes(expectedCity);
+                    });
+                }
                 
                 if (!grouped[file.category]) {
                     grouped[file.category] = {
@@ -1247,8 +1267,30 @@ exports.getDatasetDetail = async (req, res) => {
         let mergedBusinesses = [];
         relevantFiles.forEach(fp => {
             try {
+                const relPath = path.relative(baseDir, fp).replace(/\\/g, '/');
+                const pathParts = relPath.split('/');
+                let expectedCity = null;
+                if (pathParts[0] !== 'misc' && pathParts[0] !== 'coordinates' && pathParts.length >= 4) {
+                    expectedCity = pathParts[2].replace(/_/g, ' ').toLowerCase();
+                }
+
                 const content = JSON.parse(fs.readFileSync(fp, 'utf-8'));
-                mergedBusinesses = mergedBusinesses.concat(content);
+                
+                let filteredContent = content;
+                if (expectedCity) {
+                    filteredContent = content.filter(item => {
+                        if (!item.full_address) return true;
+                        const lowerAddress = item.full_address.toLowerCase();
+                        const parts = item.full_address.split(',');
+                        if (parts.length >= 3) {
+                            const actualCity = parts[parts.length - 3].trim().toLowerCase();
+                            if (actualCity.includes(expectedCity) || expectedCity.includes(actualCity)) return true;
+                        }
+                        return lowerAddress.includes(expectedCity);
+                    });
+                }
+                
+                mergedBusinesses = mergedBusinesses.concat(filteredContent);
             } catch(e) {}
         });
         
@@ -1427,7 +1469,16 @@ exports.purchaseDataset = async (req, res) => {
             return filelist;
         };
         
-        const relevantFiles = findFiles(baseDir); // Naive scoping for demo
+        let allMatches = findFiles(baseDir);
+        let relevantFiles = allMatches;
+        
+        if (locSlug) {
+            const tokens = locSlug.split('-');
+            relevantFiles = allMatches.filter(f => {
+                const rel = path.relative(baseDir, f).replace(/\\/g, '/').toLowerCase(); 
+                return tokens.every(t => rel.includes(t)); 
+            });
+        }
         
         if (relevantFiles.length === 0) {
              return res.status(404).json({ success: false, message: "Dataset source not found." });
@@ -1437,8 +1488,30 @@ exports.purchaseDataset = async (req, res) => {
         let mergedBusinesses = [];
         relevantFiles.forEach(fp => {
             try {
+                const relPath = path.relative(baseDir, fp).replace(/\\/g, '/');
+                const pathParts = relPath.split('/');
+                let expectedCity = null;
+                if (pathParts[0] !== 'misc' && pathParts[0] !== 'coordinates' && pathParts.length >= 4) {
+                    expectedCity = pathParts[2].replace(/_/g, ' ').toLowerCase();
+                }
+
                 const content = JSON.parse(fs.readFileSync(fp, 'utf-8'));
-                mergedBusinesses = mergedBusinesses.concat(content);
+                
+                let filteredContent = content;
+                if (expectedCity) {
+                    filteredContent = content.filter(item => {
+                        if (!item.full_address) return true;
+                        const lowerAddress = item.full_address.toLowerCase();
+                        const parts = item.full_address.split(',');
+                        if (parts.length >= 3) {
+                            const actualCity = parts[parts.length - 3].trim().toLowerCase();
+                            if (actualCity.includes(expectedCity) || expectedCity.includes(actualCity)) return true;
+                        }
+                        return lowerAddress.includes(expectedCity);
+                    });
+                }
+                
+                mergedBusinesses = mergedBusinesses.concat(filteredContent);
             } catch(e) {}
         });
 

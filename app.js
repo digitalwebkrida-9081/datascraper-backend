@@ -13,6 +13,7 @@ const locationRoutes = require('./routes/location');
 const b2bRoutes = require('./routes/b2b_database');
 const scraperRoutes = require('./routes/scraper'); 
 const formRoutes = require('./routes/formSubmission');
+const mergedRoutes = require('./routes/merged');
 const userRoutes = require('./routes/users');
 const User = require('./models/User');
 const cors = require('cors'); 
@@ -29,6 +30,7 @@ app.use('/api/b2b-leads', b2bRoutes);
 app.use('/api/scraper', scraperRoutes); // Mount scraper routes
 app.use('/api/forms', formRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/merged', mergedRoutes);
 
 // Global Error Handler
 app.use((err, req, res, next) => {
