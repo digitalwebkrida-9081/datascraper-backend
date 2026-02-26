@@ -985,14 +985,16 @@ exports.getDatasetSearchParams = async (req, res) => {
                         totalRecords: 0,
                         emailCount: 0,
                         phones: 0,
+                        websiteCount: 0,
                         lastUpdate: fs.statSync(file.path).mtime, // Approximate
                         filePaths: []
                     };
                 }
                 
                 grouped[file.category].totalRecords += businesses.length;
-                grouped[file.category].emailCount += businesses.filter(b => b.website).length; // Keeping logic consistent
-                grouped[file.category].phones += businesses.filter(b => b.phone_number).length;
+                grouped[file.category].emailCount += businesses.filter(b => b.email || b.email_address || b.contact_email).length;
+                grouped[file.category].phones += businesses.filter(b => b.phone_number || b.phone).length;
+                grouped[file.category].websiteCount += businesses.filter(b => b.website).length;
                 grouped[file.category].filePaths.push(file.path);
 
              } catch (err) {
@@ -1033,6 +1035,7 @@ exports.getDatasetSearchParams = async (req, res) => {
                 totalRecords: group.totalRecords,
                 emailCount: group.emailCount,
                 phones: group.phones,
+                websiteCount: group.websiteCount,
                 lastUpdate: group.lastUpdate ? new Date(group.lastUpdate).toLocaleDateString() : 'N/A',
                 price: '$299', // Placeholder or calculate based on count
                 filePaths: group.filePaths
@@ -1423,7 +1426,15 @@ exports.getDatasetDetail = async (req, res) => {
             category: categorySlug.replace(/-/g, ' ').toUpperCase(),
             location: locSlug.replace(/-/g, ' ').toUpperCase(), 
             totalRecords: totalCount,
-            emailCount: businesses.filter(b => b.website).length,
+            emailCount: businesses.filter(b => b.email || b.email_address || b.contact_email).length,
+            phones: businesses.filter(b => b.phone_number || b.phone).length,
+            websiteCount: businesses.filter(b => b.website).length,
+            linkedinCount: businesses.filter(b => b.linkedin || b.linkedin_url).length,
+            facebookCount: businesses.filter(b => b.facebook || b.facebook_url).length,
+            instagramCount: businesses.filter(b => b.instagram || b.instagram_url).length,
+            twitterCount: businesses.filter(b => b.twitter || b.twitter_url || b.x_url).length,
+            tiktokCount: businesses.filter(b => b.tiktok || b.tiktok_url).length,
+            youtubeCount: businesses.filter(b => b.youtube || b.youtube_url).length,
             lastUpdate: new Date().toLocaleDateString(),
             price: metadata.price,
             previousPrice: metadata.previousPrice,

@@ -176,25 +176,119 @@ app.get('/api/merged/data', async (req, res) => {
     }
 });
 
-// GET /api/merged/stats — Summary stats across all countries (CACHED)
+// ==========================================
+// FIELD DETECTION HELPERS
+// ==========================================
+const FIELD_PATTERNS = {
+    email: ['email', 'e-mail', 'email_address', 'contact_email', 'emailaddress'],
+    phone: ['phone', 'phone_number', 'telephone', 'tel', 'contact_phone', 'mobile'],
+    website: ['website', 'web', 'url', 'site', 'webpage', 'domain'],
+    linkedin: ['linkedin', 'linkedin_url'],
+    facebook: ['facebook', 'facebook_url', 'fb'],
+    instagram: ['instagram', 'instagram_url', 'ig'],
+    twitter: ['twitter', 'twitter_url', 'x_url', 'x'],
+    tiktok: ['tiktok', 'tiktok_url'],
+    youtube: ['youtube', 'youtube_url']
+};
+
+function matchesFieldPattern(header, patterns) {
+    const h = header.toLowerCase().trim();
+    return patterns.some(p => h === p || h.includes(p));
+}
+
+// Full CSV scan for accurate counts (used by browse endpoint for individual files)
+function scanCsvAccurate(filePath) {
+    return new Promise((resolve) => {
+        let totalRows = 0;
+        const counts = { emails: 0, phones: 0, websites: 0, linkedin: 0, facebook: 0, instagram: 0, twitter: 0, tiktok: 0, youtube: 0 };
+        let headerMap = {};
+
+        fs.createReadStream(filePath)
+            .pipe(csv())
+            .on('headers', (headers) => {
+                const lowerHeaders = headers.map(h => h.toLowerCase().trim());
+                for (const [fieldType, patterns] of Object.entries(FIELD_PATTERNS)) {
+                    headerMap[fieldType] = lowerHeaders.filter(h => matchesFieldPattern(h, patterns));
+                }
+            })
+            .on('data', (row) => {
+                totalRows++;
+                const lowerRow = {};
+                for (const key of Object.keys(row)) {
+                    lowerRow[key.toLowerCase().trim()] = row[key];
+                }
+                for (const [fieldType, matchedHeaders] of Object.entries(headerMap)) {
+                    const countKey = fieldType === 'email' ? 'emails' : fieldType === 'phone' ? 'phones' : fieldType === 'website' ? 'websites' : fieldType;
+                    if (matchedHeaders.some(h => lowerRow[h] && lowerRow[h].trim())) {
+                        counts[countKey]++;
+                    }
+                }
+            })
+            .on('end', () => resolve({ totalRows, ...counts }))
+            .on('error', () => resolve({ totalRows: 0, ...counts }));
+    });
+}
+
+// ==========================================
+// FAST HEADER SCANNER (reads only first line)
+// ==========================================
+function readCsvHeaders(filePath) {
+    return new Promise((resolve) => {
+        const stream = fs.createReadStream(filePath, { encoding: 'utf-8' });
+        let headerLine = '';
+        stream.on('data', (chunk) => {
+            headerLine += chunk;
+            const newlineIdx = headerLine.indexOf('\n');
+            if (newlineIdx !== -1) {
+                headerLine = headerLine.substring(0, newlineIdx).trim();
+                stream.destroy();
+            }
+        });
+        stream.on('close', () => {
+            const headers = headerLine.split(',').map(h => h.trim().replace(/^"|"$/g, '').toLowerCase());
+            // Check which field types exist in headers
+            const hasFields = {};
+            for (const [fieldType, patterns] of Object.entries(FIELD_PATTERNS)) {
+                hasFields[fieldType] = headers.some(h => matchesFieldPattern(h, patterns));
+            }
+            resolve(hasFields);
+        });
+        stream.on('error', () => resolve({}));
+    });
+}
+
+// ==========================================
+// STATS ENDPOINT (FAST, CACHED)
+// ==========================================
+
 let statsCache = null;
 let statsCacheTime = 0;
 const STATS_CACHE_TTL = 60 * 60 * 1000; // 1 hour
 
 app.get('/api/merged/stats', async (req, res) => {
     try {
+        // Force refresh with ?refresh=true
+        const forceRefresh = req.query.refresh === 'true';
+
         // Return cached stats if fresh
-        if (statsCache && (Date.now() - statsCacheTime) < STATS_CACHE_TTL) {
+        if (!forceRefresh && statsCache && (Date.now() - statsCacheTime) < STATS_CACHE_TTL) {
             console.log('[Stats] Returning cached stats');
             return res.json(statsCache);
         }
 
-        console.log('[Stats] Computing fresh stats (this may take a moment)...');
+        console.log('[Stats] Computing stats (fast mode)...');
+        const startTime = Date.now();
         const items = fs.readdirSync(MERGED_DATA_BASE, { withFileTypes: true });
         const mergedFolders = items.filter(item => item.isDirectory() && item.name.endsWith('_Merged'));
 
-        let totalRecords = 0;
-        let totalCategories = 0;
+        // Global totals
+        let globalTotals = {
+            totalRecords: 0, totalEmails: 0, totalPhones: 0, totalWebsites: 0,
+            totalLinkedin: 0, totalFacebook: 0, totalInstagram: 0,
+            totalTwitter: 0, totalTiktok: 0, totalYoutube: 0,
+            totalCategories: 0
+        };
+
         const countryStats = [];
 
         for (const folder of mergedFolders) {
@@ -202,53 +296,101 @@ app.get('/api/merged/stats', async (req, res) => {
             const mergedDir = path.join(MERGED_DATA_BASE, folder.name);
             const csvFiles = fs.readdirSync(mergedDir).filter(f => f.endsWith('.csv'));
 
-            let countryRecords = 0;
-            let countryTotalSize = 0;
+            let countryTotals = {
+                records: 0, emails: 0, phones: 0, websites: 0,
+                linkedin: 0, facebook: 0, instagram: 0,
+                twitter: 0, tiktok: 0, youtube: 0,
+                totalSize: 0
+            };
             const categoryList = [];
 
             for (const file of csvFiles) {
                 const filePath = path.join(mergedDir, file);
                 const stat = fs.statSync(filePath);
-                
-                // Estimate records from file size (approx 200 bytes per row)
-                // Much faster than reading every file
-                const estimatedRecords = Math.max(1, Math.round(stat.size / 200));
 
-                countryRecords += estimatedRecords;
-                countryTotalSize += stat.size;
+                // FAST: count lines (not parse CSV) 
+                const recordCount = await quickLineCount(filePath);
+                // FAST: read only header to check which fields exist
+                const hasFields = await readCsvHeaders(filePath);
+
+                // Records from line count
+                countryTotals.records += recordCount;
+                countryTotals.totalSize += stat.size;
+
+                // If header has email/phone/website columns, count them as available
+                if (hasFields.email) countryTotals.emails += recordCount;
+                if (hasFields.phone) countryTotals.phones += recordCount;
+                if (hasFields.website) countryTotals.websites += recordCount;
+                if (hasFields.linkedin) countryTotals.linkedin += recordCount;
+                if (hasFields.facebook) countryTotals.facebook += recordCount;
+                if (hasFields.instagram) countryTotals.instagram += recordCount;
+                if (hasFields.twitter) countryTotals.twitter += recordCount;
+                if (hasFields.tiktok) countryTotals.tiktok += recordCount;
+                if (hasFields.youtube) countryTotals.youtube += recordCount;
+
                 categoryList.push({
                     name: formatCategoryName(file.replace('.csv', '')),
-                    records: estimatedRecords,
+                    records: recordCount,
+                    hasEmail: !!hasFields.email,
+                    hasPhone: !!hasFields.phone,
+                    hasWebsite: !!hasFields.website,
                     fileSize: formatFileSize(stat.size)
                 });
             }
 
-            totalRecords += countryRecords;
-            totalCategories += csvFiles.length;
+            // Add to global totals
+            globalTotals.totalRecords += countryTotals.records;
+            globalTotals.totalEmails += countryTotals.emails;
+            globalTotals.totalPhones += countryTotals.phones;
+            globalTotals.totalWebsites += countryTotals.websites;
+            globalTotals.totalLinkedin += countryTotals.linkedin;
+            globalTotals.totalFacebook += countryTotals.facebook;
+            globalTotals.totalInstagram += countryTotals.instagram;
+            globalTotals.totalTwitter += countryTotals.twitter;
+            globalTotals.totalTiktok += countryTotals.tiktok;
+            globalTotals.totalYoutube += countryTotals.youtube;
+            globalTotals.totalCategories += csvFiles.length;
 
             countryStats.push({
                 code: countryCode,
                 name: getCountryName(countryCode),
-                totalRecords: countryRecords,
+                totalRecords: countryTotals.records,
+                totalEmails: countryTotals.emails,
+                totalPhones: countryTotals.phones,
+                totalWebsites: countryTotals.websites,
+                totalLinkedin: countryTotals.linkedin,
+                totalFacebook: countryTotals.facebook,
+                totalInstagram: countryTotals.instagram,
+                totalTwitter: countryTotals.twitter,
+                totalTiktok: countryTotals.tiktok,
+                totalYoutube: countryTotals.youtube,
                 totalCategories: csvFiles.length,
-                totalSize: formatFileSize(countryTotalSize),
+                totalSize: formatFileSize(countryTotals.totalSize),
                 topCategories: categoryList.sort((a, b) => b.records - a.records).slice(0, 10)
             });
         }
+
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.log(`[Stats] Done in ${elapsed}s — ${globalTotals.totalRecords.toLocaleString()} total records`);
 
         const result = {
             success: true,
             message: 'Stats fetched',
             data: {
-                summary: { totalCountries: mergedFolders.length, totalCategories, totalRecords },
-                countries: countryStats
+                summary: {
+                    totalCountries: mergedFolders.length,
+                    ...globalTotals
+                },
+                countries: countryStats,
+                lastComputed: new Date().toISOString(),
+                computeTimeSeconds: parseFloat(elapsed)
             }
         };
 
         // Cache the result
         statsCache = result;
         statsCacheTime = Date.now();
-        console.log('[Stats] Stats computed and cached successfully');
+        console.log('[Stats] Stats cached successfully');
 
         res.json(result);
     } catch (error) {
