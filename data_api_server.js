@@ -123,6 +123,122 @@ function readCsvPaginated(filePath, page = 1, limit = 20, search = '') {
             .on('error', (err) => reject(err));
     });
 }
+// Read CSV with pagination, optional search, and state/city filtering
+// Supports both dedicated state/city columns AND Address-based matching
+function readCsvFilteredPaginated(filePath, page = 1, limit = 20, search = '', state = '', city = '') {
+    return new Promise((resolve, reject) => {
+        const allMatching = [];
+        const lowerSearch = search.toLowerCase();
+        const lowerState = state.toLowerCase().trim();
+        const lowerCity = city.toLowerCase().trim();
+        let stateCol = null;
+        let cityCol = null;
+        let addressCol = null;
+
+        fs.createReadStream(filePath)
+            .pipe(csv())
+            .on('headers', (headers) => {
+                const lowerHeaders = headers.map(h => h.toLowerCase().trim());
+                stateCol = headers.find((h, i) => /^(state|province|region)$/i.test(lowerHeaders[i]));
+                cityCol = headers.find((h, i) => /^(city|town|municipality)$/i.test(lowerHeaders[i]));
+                addressCol = headers.find((h, i) => /^(address|full_address|location)$/i.test(lowerHeaders[i]));
+            })
+            .on('data', (row) => {
+                // Filter by state
+                if (lowerState) {
+                    if (stateCol) {
+                        const rowState = (row[stateCol] || '').toLowerCase().trim();
+                        if (rowState !== lowerState) return;
+                    } else if (addressCol) {
+                        const addr = (row[addressCol] || '').toLowerCase();
+                        if (!addr.includes(lowerState)) return;
+                    } else {
+                        // No state or address column — search all values
+                        const allVals = Object.values(row).join(' ').toLowerCase();
+                        if (!allVals.includes(lowerState)) return;
+                    }
+                }
+                // Filter by city
+                if (lowerCity) {
+                    if (cityCol) {
+                        const rowCity = (row[cityCol] || '').toLowerCase().trim();
+                        if (rowCity !== lowerCity) return;
+                    } else if (addressCol) {
+                        const addr = (row[addressCol] || '').toLowerCase();
+                        if (!addr.includes(lowerCity)) return;
+                    } else {
+                        const allVals = Object.values(row).join(' ').toLowerCase();
+                        if (!allVals.includes(lowerCity)) return;
+                    }
+                }
+                // Filter by search if provided
+                if (search) {
+                    const matches = Object.values(row).some(val =>
+                        (val || '').toString().toLowerCase().includes(lowerSearch)
+                    );
+                    if (!matches) return;
+                }
+                allMatching.push(row);
+            })
+            .on('end', () => {
+                const total = allMatching.length;
+                const totalPages = Math.ceil(total / limit);
+                const skip = (page - 1) * limit;
+                const paginatedData = allMatching.slice(skip, skip + limit);
+                resolve({ data: paginatedData, pagination: { total, page, limit, totalPages } });
+            })
+            .on('error', (err) => reject(err));
+    });
+}
+
+// FAST: Count rows matching state/city using raw text line scanning (no CSV parsing)
+function countFilteredRowsFast(filePath, lowerState, lowerCity) {
+    return new Promise((resolve) => {
+        let total = 0;
+        let isFirstLine = true;
+        let hasEmail = false;
+        let hasPhone = false;
+        let hasWebsite = false;
+        let remainder = '';
+
+        const stream = fs.createReadStream(filePath, { encoding: 'utf8', highWaterMark: 64 * 1024 });
+        
+        stream.on('data', (chunk) => {
+            const text = remainder + chunk;
+            const lines = text.split('\n');
+            remainder = lines.pop();
+            
+            for (const line of lines) {
+                if (isFirstLine) {
+                    const h = line.toLowerCase();
+                    hasEmail = h.includes('email');
+                    hasPhone = h.includes('phone');
+                    hasWebsite = h.includes('website') || h.includes('url');
+                    isFirstLine = false;
+                    continue;
+                }
+                if (!line.trim()) continue;
+                const lower = line.toLowerCase();
+                if (lowerState && !lower.includes(lowerState)) continue;
+                if (lowerCity && !lower.includes(lowerCity)) continue;
+                total++;
+            }
+        });
+        
+        stream.on('end', () => {
+            if (remainder.trim() && !isFirstLine) {
+                const lower = remainder.toLowerCase();
+                if ((!lowerState || lower.includes(lowerState)) && 
+                    (!lowerCity || lower.includes(lowerCity))) {
+                    total++;
+                }
+            }
+            resolve({ total, hasEmail, hasPhone, hasWebsite });
+        });
+        
+        stream.on('error', () => resolve({ total: 0, hasEmail: false, hasPhone: false, hasWebsite: false }));
+    });
+}
 
 // ==========================================
 // API ENDPOINTS
@@ -249,22 +365,99 @@ app.get('/api/merged/categories', async (req, res) => {
     }
 });
 
-// GET /api/merged/data?country=US&category=schools&page=1&limit=20&search=xyz
+// GET /api/merged/data?country=US&category=schools&page=1&limit=20&search=xyz&state=California&city=Los+Angeles
 app.get('/api/merged/data', async (req, res) => {
     try {
-        const { country, category, page = 1, limit = 20, search = '' } = req.query;
+        const { country, category, page = 1, limit = 20, search = '', state = '', city = '' } = req.query;
         if (!country || !category) return res.status(400).json({ success: false, message: 'Country and category required' });
 
         const filePath = path.join(getMergedDir(country), `${category}.csv`);
         if (!fs.existsSync(filePath)) return res.status(404).json({ success: false, message: `Data not found: ${category} in ${country}` });
 
-        const result = await readCsvPaginated(filePath, parseInt(page), parseInt(limit), search);
+        const result = await readCsvFilteredPaginated(filePath, parseInt(page), parseInt(limit), search, state, city);
 
         res.json({
             success: true,
             message: 'Data fetched',
             data: { country: country.toUpperCase(), category: formatCategoryName(category), ...result }
         });
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// Cache for filtered counts
+const filteredCountCache = {};
+const FILTERED_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+
+// GET /api/merged/categories-count?country=US&state=California&city=Los+Angeles
+// FAST: parallel file scanning + caching
+app.get('/api/merged/categories-count', async (req, res) => {
+    try {
+        const { country, state = '', city = '' } = req.query;
+        if (!country) return res.status(400).json({ success: false, message: 'Country parameter is required' });
+
+        const mergedDir = getMergedDir(country);
+        if (!fs.existsSync(mergedDir)) return res.status(404).json({ success: false, message: `No data for: ${country}` });
+
+        // Check cache
+        const cacheKey = `${country}_${state}_${city}`.toLowerCase();
+        if (filteredCountCache[cacheKey] && (Date.now() - filteredCountCache[cacheKey].time) < FILTERED_CACHE_TTL) {
+            console.log(`[categories-count] Cache HIT for ${cacheKey}`);
+            return res.json(filteredCountCache[cacheKey].data);
+        }
+
+        const csvFiles = fs.readdirSync(mergedDir).filter(f => f.endsWith('.csv'));
+        const lowerState = state.toLowerCase().trim();
+        const lowerCity = city.toLowerCase().trim();
+
+        console.log(`[categories-count] country=${country} state="${state}" city="${city}" — scanning ${csvFiles.length} files (FAST)...`);
+        const startTime = Date.now();
+
+        // Process files in PARALLEL batches of 50
+        const BATCH_SIZE = 50;
+        const categories = [];
+
+        for (let i = 0; i < csvFiles.length; i += BATCH_SIZE) {
+            const batch = csvFiles.slice(i, i + BATCH_SIZE);
+            const results = await Promise.all(batch.map(async (file) => {
+                const categoryName = file.replace('.csv', '');
+                const filePath = path.join(mergedDir, file);
+                const countResult = await countFilteredRowsFast(filePath, lowerState, lowerCity);
+                return {
+                    name: categoryName,
+                    displayName: formatCategoryName(categoryName),
+                    records: countResult.total,
+                    hasEmail: countResult.hasEmail,
+                    hasPhone: countResult.hasPhone,
+                    hasWebsite: countResult.hasWebsite
+                };
+            }));
+            categories.push(...results);
+        }
+
+        categories.sort((a, b) => a.displayName.localeCompare(b.displayName));
+
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.log(`[categories-count] Done in ${elapsed}s — ${categories.filter(c => c.records > 0).length} categories with records`);
+
+        const responseData = {
+            success: true,
+            message: 'Filtered category counts fetched',
+            data: {
+                country: country.toUpperCase(),
+                state: state,
+                city: city,
+                totalCategories: categories.length,
+                categories
+            }
+        };
+
+        // Save to cache
+        filteredCountCache[cacheKey] = { time: Date.now(), data: responseData };
+
+        res.json(responseData);
     } catch (error) {
         console.error('Error:', error);
         res.status(500).json({ success: false, message: error.message });
