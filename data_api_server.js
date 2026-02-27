@@ -411,9 +411,15 @@ app.get('/api/merged/categories-count', async (req, res) => {
         const lowerState = state.toLowerCase().trim();
         const lowerCity = city.toLowerCase().trim();
 
-        // 2. Pre-computed disk cache (instant) - only applies when city is empty and state matches a precomputed file
-        if (lowerState && !lowerCity) {
-            const cacheFilePath = path.join(mergedDir, '.cache', `${country.toLowerCase()}_state_${lowerState.replace(/\s+/g, '_')}.json`);
+        // 2. Pre-computed disk cache (instant)
+        if (lowerState) {
+            let cacheFileName = `${country.toLowerCase()}_state_${lowerState.replace(/\s+/g, '_')}`;
+            if (lowerCity) {
+                cacheFileName += `_city_${lowerCity.replace(/\s+/g, '_')}`;
+            }
+            cacheFileName += '.json';
+            
+            const cacheFilePath = path.join(mergedDir, '.cache', cacheFileName);
             if (fs.existsSync(cacheFilePath)) {
                 console.log(`[categories-count] Disk Cache HIT for ${cacheFilePath}`);
                 const diskCacheData = JSON.parse(fs.readFileSync(cacheFilePath, 'utf8'));
