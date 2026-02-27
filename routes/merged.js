@@ -11,8 +11,8 @@ const proxyGet = async (req, res) => {
         const targetUrl = `${DATA_API_URL}${req.originalUrl}`;
         console.log(`[Proxy] GET → ${targetUrl}`);
         
-        // Stats/browse endpoints scan files, need more time
-        const timeout = (req.path.includes('stats') || req.path.includes('browse')) ? 120000 : 30000;
+        // Stats/browse/categories-count endpoints scan files, need more time
+        const timeout = (req.path.includes('stats') || req.path.includes('browse') || req.path.includes('categories-count')) ? 120000 : 30000;
         const response = await axios.get(targetUrl, { timeout });
         res.json(response.data);
     } catch (error) {
@@ -46,6 +46,7 @@ const proxyPost = async (req, res) => {
 // GET routes
 router.get('/countries', proxyGet);
 router.get('/categories', proxyGet);
+router.get('/categories-count', proxyGet);
 router.get('/data', proxyGet);
 router.get('/stats', proxyGet);
 router.get('/browse', proxyGet);
