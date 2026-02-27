@@ -101,59 +101,67 @@ async function run() {
             .filter(dirent => dirent.isDirectory())
             .map(dirent => dirent.name);
 
-        for (const cityName of cityDirs) {
+        for (let i = 0; i < cityDirs.length; i++) {
+            const cityName = cityDirs[i];
             const lowerCityName = cityName.toLowerCase();
             const cityPath = path.join(statePath, cityName);
 
+            process.stdout.write(`\r  -> City [${i + 1}/${cityDirs.length}]: ${cityName}`.padEnd(80) + '\r');
+
             // 3. Iterate over CSV files inside the city
             const csvFiles = fs.readdirSync(cityPath).filter(f => f.endsWith('.csv'));
+            
+            // Process CSVs in parallel for this city
+            const batchSize = 100;
+            for (let j = 0; j < csvFiles.length; j += batchSize) {
+                const batch = csvFiles.slice(j, j + batchSize);
+                await Promise.all(batch.map(async (file) => {
+                    const categoryRaw = file.replace('.csv', '');
+                    const filePath = path.join(cityPath, file);
 
-            for (const file of csvFiles) {
-                const categoryRaw = file.replace('.csv', '');
-                const filePath = path.join(cityPath, file);
+                    // Count the rows in this CSV
+                    const stats = await countLinesAndFields(filePath);
+                    if (stats.total === 0) return;
 
-                // Count the rows in this CSV
-                const stats = await countLinesAndFields(filePath);
-                if (stats.total === 0) continue;
+                    // --- 1. Add to City-level totals ---
+                    if (!cacheData[lowerStateName][lowerCityName]) {
+                        cacheData[lowerStateName][lowerCityName] = {};
+                    }
+                    
+                    if (!cacheData[lowerStateName][lowerCityName][categoryRaw]) {
+                        cacheData[lowerStateName][lowerCityName][categoryRaw] = {
+                            name: categoryRaw,
+                            displayName: formatCategoryName(categoryRaw),
+                            records: 0,
+                            hasEmail: stats.hasEmail,
+                            hasPhone: stats.hasPhone,
+                            hasWebsite: stats.hasWebsite
+                        };
+                    }
+                    cacheData[lowerStateName][lowerCityName][categoryRaw].records += stats.total;
+                    cacheData[lowerStateName][lowerCityName][categoryRaw].hasEmail ||= stats.hasEmail;
+                    cacheData[lowerStateName][lowerCityName][categoryRaw].hasPhone ||= stats.hasPhone;
+                    cacheData[lowerStateName][lowerCityName][categoryRaw].hasWebsite ||= stats.hasWebsite;
 
-                // --- 1. Add to City-level totals ---
-                if (!cacheData[lowerStateName][lowerCityName]) {
-                    cacheData[lowerStateName][lowerCityName] = {};
-                }
-                
-                if (!cacheData[lowerStateName][lowerCityName][categoryRaw]) {
-                    cacheData[lowerStateName][lowerCityName][categoryRaw] = {
-                        name: categoryRaw,
-                        displayName: formatCategoryName(categoryRaw),
-                        records: 0,
-                        hasEmail: stats.hasEmail,
-                        hasPhone: stats.hasPhone,
-                        hasWebsite: stats.hasWebsite
-                    };
-                }
-                cacheData[lowerStateName][lowerCityName][categoryRaw].records += stats.total;
-                // Update bools if any file has them
-                cacheData[lowerStateName][lowerCityName][categoryRaw].hasEmail ||= stats.hasEmail;
-                cacheData[lowerStateName][lowerCityName][categoryRaw].hasPhone ||= stats.hasPhone;
-                cacheData[lowerStateName][lowerCityName][categoryRaw].hasWebsite ||= stats.hasWebsite;
-
-                // --- 2. Add to State-level totals ---
-                if (!cacheData[lowerStateName]._global_categories[categoryRaw]) {
-                    cacheData[lowerStateName]._global_categories[categoryRaw] = {
-                        name: categoryRaw,
-                        displayName: formatCategoryName(categoryRaw),
-                        records: 0,
-                        hasEmail: stats.hasEmail,
-                        hasPhone: stats.hasPhone,
-                        hasWebsite: stats.hasWebsite
-                    };
-                }
-                cacheData[lowerStateName]._global_categories[categoryRaw].records += stats.total;
-                cacheData[lowerStateName]._global_categories[categoryRaw].hasEmail ||= stats.hasEmail;
-                cacheData[lowerStateName]._global_categories[categoryRaw].hasPhone ||= stats.hasPhone;
-                cacheData[lowerStateName]._global_categories[categoryRaw].hasWebsite ||= stats.hasWebsite;
+                    // --- 2. Add to State-level totals ---
+                    if (!cacheData[lowerStateName]._global_categories[categoryRaw]) {
+                        cacheData[lowerStateName]._global_categories[categoryRaw] = {
+                            name: categoryRaw,
+                            displayName: formatCategoryName(categoryRaw),
+                            records: 0,
+                            hasEmail: stats.hasEmail,
+                            hasPhone: stats.hasPhone,
+                            hasWebsite: stats.hasWebsite
+                        };
+                    }
+                    cacheData[lowerStateName]._global_categories[categoryRaw].records += stats.total;
+                    cacheData[lowerStateName]._global_categories[categoryRaw].hasEmail ||= stats.hasEmail;
+                    cacheData[lowerStateName]._global_categories[categoryRaw].hasPhone ||= stats.hasPhone;
+                    cacheData[lowerStateName]._global_categories[categoryRaw].hasWebsite ||= stats.hasWebsite;
+                }));
             }
         }
+        console.log(`\n  -> Finished processing ${cityDirs.length} cities in ${fullStateName}`);
         
         // --- Write State Level Cache ---
         const stateCategories = Object.values(cacheData[lowerStateName]._global_categories);
