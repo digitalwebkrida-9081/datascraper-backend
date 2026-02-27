@@ -401,16 +401,30 @@ app.get('/api/merged/categories-count', async (req, res) => {
         const mergedDir = getMergedDir(country);
         if (!fs.existsSync(mergedDir)) return res.status(404).json({ success: false, message: `No data for: ${country}` });
 
-        // Check cache
+        // 1. In-memory cache (fastest)
         const cacheKey = `${country}_${state}_${city}`.toLowerCase();
         if (filteredCountCache[cacheKey] && (Date.now() - filteredCountCache[cacheKey].time) < FILTERED_CACHE_TTL) {
-            console.log(`[categories-count] Cache HIT for ${cacheKey}`);
+            console.log(`[categories-count] Memory Cache HIT for ${cacheKey}`);
             return res.json(filteredCountCache[cacheKey].data);
         }
 
-        const csvFiles = fs.readdirSync(mergedDir).filter(f => f.endsWith('.csv'));
         const lowerState = state.toLowerCase().trim();
         const lowerCity = city.toLowerCase().trim();
+
+        // 2. Pre-computed disk cache (instant) - only applies when city is empty and state matches a precomputed file
+        if (lowerState && !lowerCity) {
+            const cacheFilePath = path.join(mergedDir, '.cache', `${country.toLowerCase()}_state_${lowerState.replace(/\s+/g, '_')}.json`);
+            if (fs.existsSync(cacheFilePath)) {
+                console.log(`[categories-count] Disk Cache HIT for ${cacheFilePath}`);
+                const diskCacheData = JSON.parse(fs.readFileSync(cacheFilePath, 'utf8'));
+                // Save to memory cache for next time
+                filteredCountCache[cacheKey] = { time: Date.now(), data: diskCacheData };
+                return res.json(diskCacheData);
+            }
+        }
+
+        const csvFiles = fs.readdirSync(mergedDir).filter(f => f.endsWith('.csv'));
+
 
         console.log(`[categories-count] country=${country} state="${state}" city="${city}" — scanning ${csvFiles.length} files (FAST)...`);
         const startTime = Date.now();
