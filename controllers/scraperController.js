@@ -987,7 +987,7 @@ exports.getDatasetSearchParams = async (req, res) => {
                         phones: 0,
                         websiteCount: 0,
                         lastUpdate: fs.statSync(file.path).mtime, // Approximate
-                        filePaths: []
+                        filePaths: []  
                     };
                 }
                 

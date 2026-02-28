@@ -391,18 +391,21 @@ app.get('/api/merged/data', async (req, res) => {
 const filteredCountCache = {};
 const FILTERED_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
 
-// GET /api/merged/categories-count?country=US&state=California&city=Los+Angeles
-// FAST: parallel file scanning + caching
+// GET /api/merged/categories-count?country=US&state=California&city=Los+Angeles&page=1&limit=20
+// FAST: parallel file scanning + caching + pagination
 app.get('/api/merged/categories-count', async (req, res) => {
     try {
-        const { country, state = '', city = '' } = req.query;
+        const { country, state = '', city = '', category = '', page = 1, limit = 20 } = req.query;
         if (!country) return res.status(400).json({ success: false, message: 'Country parameter is required' });
 
         const mergedDir = getMergedDir(country);
         if (!fs.existsSync(mergedDir)) return res.status(404).json({ success: false, message: `No data for: ${country}` });
 
+        const pageNum = Math.max(1, parseInt(page));
+        const limitNum = parseInt(limit) || 20;
+
         // 1. In-memory cache (fastest)
-        const cacheKey = `${country}_${state}_${city}`.toLowerCase();
+        const cacheKey = `${country}_${state}_${city}_${category}_p${pageNum}_l${limitNum}`.toLowerCase();
         if (filteredCountCache[cacheKey] && (Date.now() - filteredCountCache[cacheKey].time) < FILTERED_CACHE_TTL) {
             console.log(`[categories-count] Memory Cache HIT for ${cacheKey}`);
             return res.json(filteredCountCache[cacheKey].data);
@@ -410,9 +413,10 @@ app.get('/api/merged/categories-count', async (req, res) => {
 
         const lowerState = state.toLowerCase().trim();
         const lowerCity = city.toLowerCase().trim();
+        const lowerCategory = category.toLowerCase().trim().replace(/\s+/g, '_');
 
         // 2. Pre-computed disk cache (instant)
-        if (lowerState) {
+        if (lowerState && !lowerCategory) {
             let cacheFileName = `${country.toLowerCase()}_state_${lowerState.replace(/\s+/g, '_')}`;
             if (lowerCity) {
                 cacheFileName += `_city_${lowerCity.replace(/\s+/g, '_')}`;
@@ -423,24 +427,67 @@ app.get('/api/merged/categories-count', async (req, res) => {
             if (fs.existsSync(cacheFilePath)) {
                 console.log(`[categories-count] Disk Cache HIT for ${cacheFilePath}`);
                 const diskCacheData = JSON.parse(fs.readFileSync(cacheFilePath, 'utf8'));
+                
+                // Handle Pagination on Disk Cache
+                const totalCategories = diskCacheData.categories.length;
+                const totalPages = Math.ceil(totalCategories / limitNum);
+                const skip = (pageNum - 1) * limitNum;
+                const paginatedCategories = diskCacheData.categories.slice(skip, skip + limitNum);
+
+                const responseData = {
+                    ...diskCacheData,
+                    totalCategories,
+                    categories: paginatedCategories,
+                    pagination: {
+                        page: pageNum,
+                        limit: limitNum,
+                        totalPages,
+                        totalCategories,
+                        hasNextPage: pageNum < totalPages,
+                        hasPrevPage: pageNum > 1
+                    }
+                };
+
                 // Save to memory cache for next time
-                filteredCountCache[cacheKey] = { time: Date.now(), data: diskCacheData };
-                return res.json(diskCacheData);
+                filteredCountCache[cacheKey] = { time: Date.now(), data: responseData };
+                return res.json(responseData);
             }
         }
 
-        const csvFiles = fs.readdirSync(mergedDir).filter(f => f.endsWith('.csv'));
+        let csvFiles = fs.readdirSync(mergedDir).filter(f => f.endsWith('.csv'));
 
+        // FAST PATH: If a specific category is requested, only scan that file
+        if (lowerCategory) {
+            const matchedFiles = csvFiles.filter(f => f.replace('.csv', '').toLowerCase() === lowerCategory);
+            if (matchedFiles.length > 0) {
+                csvFiles = matchedFiles;
+            } else if (category) {
+                 const displayMatched = csvFiles.filter(f => formatCategoryName(f.replace('.csv', '')).toLowerCase() === category.toLowerCase());
+                 if (displayMatched.length > 0) {
+                     csvFiles = displayMatched;
+                 } else {
+                     csvFiles = []; // No match found
+                 }
+            } else {
+                csvFiles = [];
+            }
+        }
 
-        console.log(`[categories-count] country=${country} state="${state}" city="${city}" — scanning ${csvFiles.length} files (FAST)...`);
+        // Apply pagination BEFORE scanning to save massive computation
+        const totalFilesToScan = csvFiles.length;
+        const totalPages = Math.ceil(totalFilesToScan / limitNum);
+        const skip = (pageNum - 1) * limitNum;
+        const pagedCsvFiles = csvFiles.slice(skip, skip + limitNum);
+
+        console.log(`[categories-count] country=${country} state="${state}" category="${category}" page=${pageNum} — scanning ${pagedCsvFiles.length}/${totalFilesToScan} files (FAST)...`);
         const startTime = Date.now();
 
         // Process files in PARALLEL batches of 50
         const BATCH_SIZE = 50;
         const categories = [];
 
-        for (let i = 0; i < csvFiles.length; i += BATCH_SIZE) {
-            const batch = csvFiles.slice(i, i + BATCH_SIZE);
+        for (let i = 0; i < pagedCsvFiles.length; i += BATCH_SIZE) {
+            const batch = pagedCsvFiles.slice(i, i + BATCH_SIZE);
             const results = await Promise.all(batch.map(async (file) => {
                 const categoryName = file.replace('.csv', '');
                 const filePath = path.join(mergedDir, file);
@@ -457,10 +504,13 @@ app.get('/api/merged/categories-count', async (req, res) => {
             categories.push(...results);
         }
 
+        // Only sorting the current page, which is acceptable since the UI lists them arbitrarily or we can sort later from cache.
+        // For accurate A-Z sorting of all items without disk cache, it requires a full scan. 
+        // We'll sort the paginated results for now, but ideally pre-compute disk cache.
         categories.sort((a, b) => a.displayName.localeCompare(b.displayName));
 
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        console.log(`[categories-count] Done in ${elapsed}s — ${categories.filter(c => c.records > 0).length} categories with records`);
+        console.log(`[categories-count] Paged scan done in ${elapsed}s`);
 
         const responseData = {
             success: true,
@@ -469,8 +519,17 @@ app.get('/api/merged/categories-count', async (req, res) => {
                 country: country.toUpperCase(),
                 state: state,
                 city: city,
-                totalCategories: categories.length,
-                categories
+                category: category || undefined,
+                totalCategories: totalFilesToScan,
+                categories,
+                pagination: {
+                    page: pageNum,
+                    limit: limitNum,
+                    totalPages,
+                    totalCategories: totalFilesToScan,
+                    hasNextPage: pageNum < totalPages,
+                    hasPrevPage: pageNum > 1
+                }
             }
         };
 

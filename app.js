@@ -15,6 +15,7 @@ const scraperRoutes = require('./routes/scraper');
 const formRoutes = require('./routes/formSubmission');
 const mergedRoutes = require('./routes/merged');
 const userRoutes = require('./routes/users');
+const paymentRoutes = require('./routes/paymentRoutes');
 const User = require('./models/User');
 const cors = require('cors'); 
 
@@ -31,11 +32,13 @@ app.use('/api/scraper', scraperRoutes); // Mount scraper routes
 app.use('/api/forms', formRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/merged', mergedRoutes);
+app.use('/api/payment', paymentRoutes);
 
 // Global Error Handler
 app.use((err, req, res, next) => {
     console.error(err.stack);
-    errorResponse(res, 'Something broke!', 500, err.message);
+    // Custom errorResponse signature: (res, message, statusCode, error)
+    errorResponse(res, 'Something broke!', 500, err);
 });
 
 const PORT = 6969;
