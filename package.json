@@ -23,6 +23,7 @@
     "git": "^0.1.5",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.1.2",
+    "multer": "^2.1.0",
     "nodemailer": "^7.0.12",
     "puppeteer": "^24.35.0",
     "puppeteer-extra": "^3.3.6",

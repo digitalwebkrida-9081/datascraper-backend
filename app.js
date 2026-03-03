@@ -1,8 +1,11 @@
-const express = require('express');
-const connectDB = require('./config/db');
-const redisClient = require('./config/redisClient'); 
-const authMiddleware = require('./middleware/auth');
-const { successResponse, errorResponse } = require('./common/helper/responseHelper');
+const express = require("express");
+const connectDB = require("./config/db");
+const redisClient = require("./config/redisClient");
+const authMiddleware = require("./middleware/auth");
+const {
+  successResponse,
+  errorResponse,
+} = require("./common/helper/responseHelper");
 
 const app = express();
 
@@ -20,12 +23,18 @@ const blogPostsRoutes = require('./routes/blogPosts');
 const blogAuthRoutes = require('./routes/blogAuthRoutes');
 const User = require('./models/User');
 const BlogAdmin = require('./models/BlogAdmin');
+const blogRoutes = require("./routes/blog");
+const uploadRoutes = require("./routes/upload");
 const cors = require('cors'); 
+const path = require("path");
 
 // Middleware
-app.use(cors({origin: '*', methods: ['GET', 'POST', 'PUT', 'DELETE']})); // Enable CORS for frontend access
+app.use(cors({ origin: "*", methods: ["GET", "POST", "PUT", "DELETE"] })); // Enable CORS for frontend access
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Serve static uploads
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 app.use('/api/country', countryRoutes);
 app.use('/api/category', categoryRoutes);
@@ -38,18 +47,21 @@ app.use('/api/merged', mergedRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/posts', blogPostsRoutes);
 app.use('/api/auth', blogAuthRoutes);
+app.use("/api/blogs", blogRoutes);
+app.use("/api/upload", uploadRoutes);
 
 // Global Error Handler
 app.use((err, req, res, next) => {
-    console.error(err.stack);
-    // Custom errorResponse signature: (res, message, statusCode, error)
-    errorResponse(res, 'Something broke!', 500, err);
+  console.error(err.stack);
+  // Custom errorResponse signature: (res, message, statusCode, error)
+  errorResponse(res, "Something broke!", 500, err);
 });
 
 const PORT = 6969;
 
 // Connect to Database before listening
-connectDB().then(async () => {
+connectDB()
+  .then(async () => {
     // Seed default admin if no users exist
     try {
         const userCount = await User.countDocuments();
@@ -75,13 +87,14 @@ connectDB().then(async () => {
             console.log('Default blog admin created successfully. Credentials: blogadmin / password123');
         }
     } catch (err) {
-        console.error('Error checking/seeding users:', err);
+      console.error("Error checking/seeding users:", err);
     }
 
     app.listen(PORT, () => {
-        console.log(`Server is running on port ${PORT}`);
+      console.log(`Server is running on port ${PORT}`);
     });
-}).catch(err => {
-    console.error('Failed to connect to Database', err);
+  })
+  .catch((err) => {
+    console.error("Failed to connect to Database", err);
     process.exit(1);
-});
+  });
