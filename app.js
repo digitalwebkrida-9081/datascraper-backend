@@ -16,7 +16,10 @@ const formRoutes = require('./routes/formSubmission');
 const mergedRoutes = require('./routes/merged');
 const userRoutes = require('./routes/users');
 const paymentRoutes = require('./routes/paymentRoutes');
+const blogPostsRoutes = require('./routes/blogPosts');
+const blogAuthRoutes = require('./routes/blogAuthRoutes');
 const User = require('./models/User');
+const BlogAdmin = require('./models/BlogAdmin');
 const cors = require('cors'); 
 
 // Middleware
@@ -33,6 +36,8 @@ app.use('/api/forms', formRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/merged', mergedRoutes);
 app.use('/api/payment', paymentRoutes);
+app.use('/api/posts', blogPostsRoutes);
+app.use('/api/auth', blogAuthRoutes);
 
 // Global Error Handler
 app.use((err, req, res, next) => {
@@ -57,6 +62,17 @@ connectDB().then(async () => {
             });
             await defaultAdmin.save();
             console.log('Default admin user created successfully.');
+        }
+
+        const blogAdminCount = await BlogAdmin.countDocuments();
+        if (blogAdminCount === 0) {
+            console.log('No blog admins found. Seeding default blog admin...');
+            const defaultBlogAdmin = new BlogAdmin({
+                username: 'blogadmin',
+                password: 'password123'
+            });
+            await defaultBlogAdmin.save();
+            console.log('Default blog admin created successfully. Credentials: blogadmin / password123');
         }
     } catch (err) {
         console.error('Error checking/seeding users:', err);
