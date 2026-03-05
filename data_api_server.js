@@ -319,6 +319,12 @@ app.get('/api/merged/categories', async (req, res) => {
                     hasEmail: !!hasFields.email,
                     hasPhone: !!hasFields.phone,
                     hasWebsite: !!hasFields.website,
+                    hasLinkedin: !!hasFields.linkedin,
+                    hasFacebook: !!hasFields.facebook,
+                    hasInstagram: !!hasFields.instagram,
+                    hasTwitter: !!hasFields.twitter,
+                    hasTiktok: !!hasFields.tiktok,
+                    hasYoutube: !!hasFields.youtube,
                     fileSize: stat.size,
                     fileSizeFormatted: formatFileSize(stat.size),
                     lastModified: stat.mtime

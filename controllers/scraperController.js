@@ -785,95 +785,34 @@ exports.getAdminDatasets = async (req, res) => {
         const skip = (pageNum - 1) * limitNum;
 
         const baseDir = path.join(__dirname, '..', 'datascrapper');
+        const cacheFile = path.join(baseDir, '_admin_datasets_cache.json');
         
-        if (!fs.existsSync(baseDir)) {
+        if (!fs.existsSync(baseDir) || !fs.existsSync(cacheFile)) {
             return res.json({ success: true, data: [], pagination: { total: 0, page: pageNum, limit: limitNum, totalPages: 0 } });
         }
 
         const sanitize = (name) => (name || '').replace(/[^a-z0-9]/gi, '_').toLowerCase();
         
-        // Helper to recursively find JSON files
-        const findDatasets = (dir, filelist = []) => {
-            const files = fs.readdirSync(dir);
-            files.forEach(file => {
-                const filepath = path.join(dir, file);
-                const stat = fs.statSync(filepath);
-                if (stat.isDirectory()) {
-                    // optimization: if specific location filters are applied, only traverse matching folders?
-                     // validation to avoid scanning massive unrelated folders? baseDir should be clean.
-                    findDatasets(filepath, filelist);
-                } else {
-                    if (file.endsWith('.json') && !file.endsWith('.metadata.json')) {
-                        filelist.push(filepath);
-                    }
-                }
-            });
-            return filelist;
-        };
-
-        let allFiles = findDatasets(baseDir);
         let datasets = [];
-
-        for (const filepath of allFiles) {
-             // Extract metadata from path or file
-             const relativePath = path.relative(baseDir, filepath);
-             const parts = relativePath.split(path.sep);
-             
-             let dCountry = '', dState = '', dCity = '', dCategory = '';
-             
-             if (parts.length >= 4) {
-                 dCountry = parts[0];
-                 dState = parts[1];
-                 dCity = parts[2];
-                 dCategory = parts[3].replace('.json', '');
-             } else {
-                 // misc or partial
-                 dCategory = parts[parts.length - 1].replace('.json', '');
-                 dCountry = parts[0];
-             }
-
-             // Apply Filters (Simple substring/clean match)
-            if (country && !dCountry.toLowerCase().includes(sanitize(country))) continue;
-            if (state && !dState.toLowerCase().includes(sanitize(state))) continue;
-            if (city && !dCity.toLowerCase().includes(sanitize(city))) continue;
-            if (category && !dCategory.toLowerCase().includes(sanitize(category))) continue;
-
-             try {
-                 const stat = fs.statSync(filepath);
-                 // OPTIMIZATION: Don't read full content yet if we can avoid it, 
-                 // but we need 'totalRecords' which is inside. 
-                 // For now, allow reading.
-                 const content = fs.readFileSync(filepath, 'utf-8');
-                 const data = JSON.parse(content);
-                 
-                 const cleanName = (str) => str.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-
-                 // Read Metadata if exists
-                 let filePrice = "$199";
-                 const metaPath = filepath.replace('.json', '.metadata.json');
-                 if (fs.existsSync(metaPath)) {
-                     try {
-                         const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
-                         if (meta.price) filePrice = meta.price;
-                     } catch(e) {}
-                 }
-
-                 datasets.push({
-                     _id: relativePath.replace(/\\/g, '/'),
-                     location: `${cleanName(dCity)}, ${cleanName(dState)}, ${cleanName(dCountry)}`,
-                     category: cleanName(dCategory),
-                     totalRecords: data.length,
-                     price: filePrice, 
-                     lastUpdate: stat.mtime,
-                     sampleList: data.slice(0, 3) 
-                 });
-             } catch (e) {
-                 console.error("Error parsing dataset:", filepath);
-             }
+        try {
+            const cacheContent = fs.readFileSync(cacheFile, 'utf-8');
+            datasets = JSON.parse(cacheContent);
+        } catch (e) {
+            console.error("Error reading cache file:", e);
+            return res.status(500).json({ success: false, message: "Cache file corrupted or missing. Please run cache builder script." });
         }
 
-        // Sort by date desc
-        datasets.sort((a, b) => new Date(b.lastUpdate) - new Date(a.lastUpdate));
+        // Apply Filters
+        if (country) datasets = datasets.filter(d => d._rawCountry.includes(sanitize(country)));
+        if (state) datasets = datasets.filter(d => d._rawState.includes(sanitize(state)));
+        if (city) datasets = datasets.filter(d => d._rawCity.includes(sanitize(city)));
+        if (category) datasets = datasets.filter(d => d._rawCategory.includes(sanitize(category)));
+
+        // Remove the internal filter fields before sending
+        datasets = datasets.map(d => {
+            const { _rawCountry, _rawState, _rawCity, _rawCategory, ...rest } = d;
+            return rest;
+        });
 
         // PAGINATION LOGIC
         const total = datasets.length;
