@@ -6,4 +6,7 @@ const paymentController = require('../controllers/paymentController');
 router.post('/create-paypal-order', paymentController.createOrder);
 router.post('/capture-paypal-order', paymentController.captureOrder);
 
+// Orders route
+router.get('/orders', paymentController.getOrders);
+
 module.exports = router;

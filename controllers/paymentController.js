@@ -115,3 +115,13 @@ exports.captureOrder = async (req, res) => {
         res.status(500).json({ success: false, message: 'Failed to capture order', error: error?.response?.data || error.message });
     }
 };
+
+exports.getOrders = async (req, res) => {
+    try {
+        const orders = await PaymentTransaction.find().sort({ createdAt: -1 });
+        res.status(200).json({ success: true, data: orders });
+    } catch (error) {
+        console.error('Failed to fetch orders:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch orders' });
+    }
+};

@@ -132,12 +132,14 @@ function readCsvFilteredPaginated(filePath, page = 1, limit = 20, search = '', s
         const lowerState = state.toLowerCase().trim();
         const lowerCity = city.toLowerCase().trim();
         let stateCol = null;
-        let cityCol = null;
+        let cityCol = null; 
         let addressCol = null;
+        let columns = [];
 
         fs.createReadStream(filePath)
             .pipe(csv())
             .on('headers', (headers) => {
+                columns = headers;
                 const lowerHeaders = headers.map(h => h.toLowerCase().trim());
                 stateCol = headers.find((h, i) => /^(state|province|region)$/i.test(lowerHeaders[i]));
                 cityCol = headers.find((h, i) => /^(city|town|municipality)$/i.test(lowerHeaders[i]));
@@ -185,7 +187,7 @@ function readCsvFilteredPaginated(filePath, page = 1, limit = 20, search = '', s
                 const totalPages = Math.ceil(total / limit);
                 const skip = (page - 1) * limit;
                 const paginatedData = allMatching.slice(skip, skip + limit);
-                resolve({ data: paginatedData, pagination: { total, page, limit, totalPages } });
+                resolve({ columns, data: paginatedData, pagination: { total, page, limit, totalPages } });
             })
             .on('error', (err) => reject(err));
     });
@@ -241,6 +243,43 @@ function countFilteredRowsFast(filePath, lowerState, lowerCity) {
 }
 
 // ==========================================
+// PRICING HELPER
+// ==========================================
+// Load pricing from the central _pricing.json file in the MERGED_DATA_BASE
+const PRICING_CACHE_FILE = path.join(MERGED_DATA_BASE, '_pricing.json');
+
+function loadPricing() {
+    try {
+        if (fs.existsSync(PRICING_CACHE_FILE)) {
+            return JSON.parse(fs.readFileSync(PRICING_CACHE_FILE, 'utf8'));
+        }
+    } catch (e) {
+        console.error('Error loading pricing cache:', e);
+    }
+    return {};
+}
+
+function savePricing(data) {
+    try {
+        fs.writeFileSync(PRICING_CACHE_FILE, JSON.stringify(data, null, 2), 'utf8');
+        return true;
+    } catch (e) {
+        console.error('Error saving pricing cache:', e);
+        return false;
+    }
+}
+
+// Generate a unique key for an item's price
+function getPriceKey(country, state = '', city = '', category = '') {
+    return [
+        country?.toUpperCase() || '',
+        state?.toLowerCase().trim() || '',
+        city?.toLowerCase().trim() || '',
+        category?.toLowerCase().trim() || ''
+    ].join('_||_'); // Using a clear separator
+}
+
+// ==========================================
 // API ENDPOINTS
 // ==========================================
 
@@ -289,7 +328,16 @@ app.get('/api/merged/categories', async (req, res) => {
             try {
                 const cached = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
                 if (cached.fileCount === csvFiles.length) {
-                    categories = cached.categories;
+                    const pricing = loadPricing();
+                    categories = cached.categories.map(cat => {
+                        const pKey = getPriceKey(country, '', '', cat.name);
+                        const priceData = pricing[pKey] || {};
+                        return {
+                            ...cat,
+                            price: priceData.price || cat.price,
+                            previousPrice: priceData.previousPrice || cat.previousPrice
+                        };
+                    });
                     console.log(`[Cache HIT] ${country} — ${categories.length} categories`);
                 }
             } catch (e) { /* cache corrupt, rebuild */ }
@@ -311,6 +359,12 @@ app.get('/api/merged/categories', async (req, res) => {
                     readCsvHeaders(filePath)
                 ]);
 
+                // Check pricing
+                const pricing = loadPricing();
+                // For country-level category, state and city are empty
+                const pKey = getPriceKey(country, '', '', categoryName);
+                const priceData = pricing[pKey] || {};
+
                 categories.push({
                     name: categoryName,
                     displayName: formatCategoryName(categoryName),
@@ -327,7 +381,9 @@ app.get('/api/merged/categories', async (req, res) => {
                     hasYoutube: !!hasFields.youtube,
                     fileSize: stat.size,
                     fileSizeFormatted: formatFileSize(stat.size),
-                    lastModified: stat.mtime
+                    lastModified: stat.mtime,
+                    price: priceData.price || null,
+                    previousPrice: priceData.previousPrice || null
                 });
             }
 
@@ -386,6 +442,57 @@ app.get('/api/merged/data', async (req, res) => {
             success: true,
             message: 'Data fetched',
             data: { country: country.toUpperCase(), category: formatCategoryName(category), ...result }
+        });
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// GET /api/merged/preview?country=US&category=AA_Shops
+// FAST: Returns first 50 rows and actual headers for previewing
+app.get('/api/merged/preview', async (req, res) => {
+    try {
+        const { country, category } = req.query;
+        if (!country || !category) {
+            return res.status(400).json({ success: false, message: 'Country and category parameters required' });
+        }
+
+        const filePath = path.join(getMergedDir(country), `${category}.csv`);
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({ success: false, message: `Data not found: ${category} in ${country}` });
+        }
+
+        const rows = [];
+        let columns = [];
+        let rowCount = 0;
+        const PREVIEW_LIMIT = 50;
+
+        await new Promise((resolve, reject) => {
+            fs.createReadStream(filePath)
+                .pipe(csv())
+                .on('headers', (headers) => {
+                    columns = headers;
+                })
+                .on('data', (row) => {
+                    if (rowCount < PREVIEW_LIMIT) {
+                        rows.push(row);
+                        rowCount++;
+                    }
+                })
+                .on('end', resolve)
+                .on('error', reject);
+        });
+
+        res.json({
+            success: true,
+            message: 'Preview data fetched',
+            data: {
+                country: country.toUpperCase(),
+                category: formatCategoryName(category),
+                columns,
+                rows
+            }
         });
     } catch (error) {
         console.error('Error:', error);
@@ -543,6 +650,183 @@ app.get('/api/merged/categories-count', async (req, res) => {
         filteredCountCache[cacheKey] = { time: Date.now(), data: responseData };
 
         res.json(responseData);
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// GET /api/merged/browse
+// Used by the Frontend admin panel to browse folders and datasets
+app.get('/api/merged/browse', async (req, res) => {
+    try {
+        const { country = '', state = '', city = '', search = '', page = 1, limit = 50 } = req.query;
+        
+        let breadcrumb = [];
+        let folders = [];
+        let categoriesList = [];
+        let summary = { totalRecords: 0, totalEmails: 0, totalPhones: 0, totalWebsites: 0 };
+
+        const pricing = loadPricing();
+
+        if (!country) {
+            // Root level: Return list of countries
+            const items = fs.readdirSync(MERGED_DATA_BASE, { withFileTypes: true });
+            folders = items
+                .filter(item => item.isDirectory() && item.name.endsWith('_Merged'))
+                .map(item => {
+                    const code = item.name.replace('_Merged', '');
+                    return { code, name: getCountryName(code) };
+                });
+        } else {
+            const mergedDir = getMergedDir(country);
+            if (!fs.existsSync(mergedDir)) return res.status(404).json({ success: false, message: `No data for: ${country}` });
+
+            breadcrumb.push({ label: getCountryName(country), level: 'country' });
+            if (state) breadcrumb.push({ label: state, level: 'state' });
+            if (city) breadcrumb.push({ label: city, level: 'city' });
+
+            const csvFiles = fs.readdirSync(mergedDir).filter(f => f.endsWith('.csv'));
+            const lowerState = state.toLowerCase().trim();
+            const lowerCity = city.toLowerCase().trim();
+
+            if (!state && !city) {
+                // Return country-level categories
+                // First try to look for disk cache
+                const cacheFile = path.join(mergedDir, `_categories_cache.json`);
+                if (fs.existsSync(cacheFile)) {
+                    try {
+                        const cached = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
+                        categoriesList = cached.categories.map(cat => {
+                            const pKey = getPriceKey(country, '', '', cat.name);
+                            return { ...cat, price: pricing[pKey]?.price || null, previousPrice: pricing[pKey]?.previousPrice || null };
+                        });
+                        summary.totalRecords = categoriesList.reduce((acc, c) => acc + (c.records || 0), 0);
+                        summary.totalEmails = categoriesList.reduce((acc, c) => acc + (c.hasEmail ? c.records : 0), 0);
+                        summary.totalPhones = categoriesList.reduce((acc, c) => acc + (c.hasPhone ? c.records : 0), 0);
+                        summary.totalWebsites = categoriesList.reduce((acc, c) => acc + (c.hasWebsite ? c.records : 0), 0);
+                    } catch (e) {}
+                }
+            } else {
+                // Handle state/city browse. Uses cached data if available for fast response.
+                const cacheFileName = lowerState && lowerCity 
+                    ? `${country.toLowerCase()}_state_${lowerState.replace(/\s+/g, '_')}_city_${lowerCity.replace(/\s+/g, '_')}.json`
+                    : `${country.toLowerCase()}_state_${lowerState.replace(/\s+/g, '_')}.json`;
+                
+                const cacheFilePath = path.join(mergedDir, '.cache', cacheFileName);
+                if (fs.existsSync(cacheFilePath)) {
+                    const diskCacheData = JSON.parse(fs.readFileSync(cacheFilePath, 'utf8'));
+                    categoriesList = diskCacheData.categories.map(cat => {
+                        const pKey = getPriceKey(country, state, city, cat.name);
+                        return { ...cat, price: pricing[pKey]?.price || null, previousPrice: pricing[pKey]?.previousPrice || null };
+                    });
+                    summary = {
+                        totalRecords: categoriesList.reduce((acc, c) => acc + (c.records || 0), 0),
+                        totalEmails: categoriesList.reduce((acc, c) => acc + (c.hasEmail ? c.records : 0), 0),
+                        totalPhones: categoriesList.reduce((acc, c) => acc + (c.hasPhone ? c.records : 0), 0),
+                        totalWebsites: categoriesList.reduce((acc, c) => acc + (c.hasWebsite ? c.records : 0), 0),
+                    };
+                }
+            }
+        }
+
+        if (search) {
+            const searchLower = search.toLowerCase();
+            categoriesList = categoriesList.filter(c => c.name.toLowerCase().includes(searchLower));
+        }
+
+        const pageNum = parseInt(page) || 1;
+        const limitNum = parseInt(limit) || 50;
+        const totalCategories = categoriesList.length;
+        const totalPages = Math.ceil(totalCategories / limitNum);
+        const skip = (pageNum - 1) * limitNum;
+        
+        const paginatedCategories = categoriesList.slice(skip, skip + limitNum);
+
+        res.json({
+            success: true,
+            message: 'Browse data fetched',
+            data: { 
+                breadcrumb, 
+                folders, 
+                categories: paginatedCategories, 
+                summary,
+                pagination: {
+                    page: pageNum,
+                    limit: limitNum,
+                    totalPages,
+                    totalCategories,
+                    hasNextPage: pageNum < totalPages,
+                    hasPrevPage: pageNum > 1
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// POST /api/merged/update-price
+app.post('/api/merged/update-price', async (req, res) => {
+    try {
+        const { country, state = '', city = '', category, price, previousPrice } = req.body;
+        if (!country || !category) {
+            return res.status(400).json({ success: false, message: 'Country and category are required' });
+        }
+
+        const pricing = loadPricing();
+        const pKey = getPriceKey(country, state, city, category);
+        
+        pricing[pKey] = {
+            price: price || null,
+            previousPrice: previousPrice || null,
+            updatedAt: new Date().toISOString()
+        };
+
+        if (savePricing(pricing)) {
+            res.json({ success: true, message: 'Price updated successfully' });
+        } else {
+            res.status(500).json({ success: false, message: 'Failed to write pricing data' });
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// POST /api/merged/bulk-update-price
+app.post('/api/merged/bulk-update-price', async (req, res) => {
+    try {
+        const { country, state = '', city = '', price, previousPrice } = req.body;
+        if (!country) {
+            return res.status(400).json({ success: false, message: 'Country is required' });
+        }
+
+        const mergedDir = getMergedDir(country);
+        if (!fs.existsSync(mergedDir)) return res.status(404).json({ success: false, message: `No data for: ${country}` });
+
+        const csvFiles = fs.readdirSync(mergedDir).filter(f => f.endsWith('.csv'));
+        const pricing = loadPricing();
+        let updateCount = 0;
+
+        for (const file of csvFiles) {
+            const categoryName = file.replace('.csv', '');
+            const pKey = getPriceKey(country, state, city, categoryName);
+            
+            pricing[pKey] = {
+                price: price || null,
+                previousPrice: previousPrice || null,
+                updatedAt: new Date().toISOString()
+            };
+            updateCount++;
+        }
+
+        if (savePricing(pricing)) {
+            res.json({ success: true, message: `Successfully updated ${updateCount} categories` });
+        } else {
+            res.status(500).json({ success: false, message: 'Failed to write pricing data' });
+        }
     } catch (error) {
         console.error('Error:', error);
         res.status(500).json({ success: false, message: error.message });
