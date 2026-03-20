@@ -4,25 +4,8 @@ const csv = require('csv-parser');
 const createCsvWriter = require('csv-writer').createObjectCsvWriter;
 
 // ==========================================
-// CONFIGURATION
+// MERGE SCRIPT MODULE
 // ==========================================
-// Updated to look inside the UK folder
-const sourceDataDir = '/home/scrappingscript/scrappingscript/scraped_data/UK'; 
-const outputDir = '/home/scrappingscript/scrappingscript/scraped_data/UK_Merged';
-
-// ==========================================
-// MERGE SCRIPT
-// ==========================================
-
-if (!fs.existsSync(sourceDataDir)) {
-    console.error(`❌ Source directory not found: ${sourceDataDir}`);
-    process.exit(1);
-}
-
-if (!fs.existsSync(outputDir)) {
-    fs.mkdirSync(outputDir, { recursive: true });
-}
-
 function getUniqueKey(item) {
     if (item.place_id) return item.place_id;
     if (item.google_maps_url) return item.google_maps_url;
@@ -32,7 +15,8 @@ function getUniqueKey(item) {
 }
 
 // Recursively find all .csv files
-function findCsvFiles(dir, fileList = []) {
+function findCsvFiles(dir, outputDir, fileList = []) {
+    if (!fs.existsSync(dir)) return fileList;
     const items = fs.readdirSync(dir, { withFileTypes: true });
     for (const item of items) {
         if (item.isDirectory() && path.join(dir, item.name) === outputDir) continue;
@@ -40,7 +24,7 @@ function findCsvFiles(dir, fileList = []) {
         
         const fullPath = path.join(dir, item.name);
         if (item.isDirectory()) {
-            findCsvFiles(fullPath, fileList);
+            findCsvFiles(fullPath, outputDir, fileList);
         } else if (item.isFile() && item.name.endsWith('.csv')) {
             fileList.push(fullPath);
         }
@@ -66,13 +50,20 @@ function getMemoryUsage() {
     return Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
 }
 
-async function mergeData() {
-    console.log(`Starting data merge from: ${sourceDataDir}`);
+async function mergeData(sourceDirs, outputDir) {
+    console.log(`Starting data merge from ${sourceDirs.length} source directories...`);
     console.log(`Output directory: ${outputDir}\n`);
+
+    if (!fs.existsSync(outputDir)) {
+        fs.mkdirSync(outputDir, { recursive: true });
+    }
 
     try {
         console.log(`Scanning for CSV files...`);
-        const allCsvFiles = findCsvFiles(sourceDataDir);
+        let allCsvFiles = [];
+        for (const dir of sourceDirs) {
+            allCsvFiles = findCsvFiles(dir, outputDir, allCsvFiles);
+        }
         console.log(`Found ${allCsvFiles.length} total CSV files.\n`);
 
         // 1. Group files by Category first (Map<Category, Array<FilePath>>)
@@ -162,4 +153,10 @@ async function mergeData() {
     }
 }
 
-mergeData();
+module.exports = { mergeData };
+
+// If run directly, error out or explain
+if (require.main === module) {
+    console.error("❌ This script should be imported as a module, use organize_and_merge.js instead.");
+    process.exit(1);
+}

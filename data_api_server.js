@@ -24,6 +24,11 @@ app.use(express.json());
 // ==========================================
 
 function getMergedDir(countryCode) {
+    if (!countryCode) return '';
+    const lower = countryCode.toLowerCase();
+    if (lower === 'germany' || lower === 'de') return path.join(MERGED_DATA_BASE, 'Germany_Merged');
+    if (lower === 'france' || lower === 'fr') return path.join(MERGED_DATA_BASE, 'France_Merged');
+    if (lower === 'uk' || lower === 'gb') return path.join(MERGED_DATA_BASE, 'UK_Merged');
     return path.join(MERGED_DATA_BASE, `${countryCode.toUpperCase()}_Merged`);
 }
 
@@ -42,9 +47,10 @@ function getCountryName(code) {
     const countries = {
         'US': 'United States', 'UK': 'United Kingdom', 'CA': 'Canada',
         'AU': 'Australia', 'IN': 'India', 'DE': 'Germany',
-        'FR': 'France', 'JP': 'Japan', 'BR': 'Brazil', 'MX': 'Mexico'
+        'FR': 'France', 'JP': 'Japan', 'BR': 'Brazil', 'MX': 'Mexico',
+        'GERMANY': 'Germany', 'FRANCE': 'France'
     };
-    return countries[code.toUpperCase()] || code.toUpperCase();
+    return countries[code.toUpperCase()] || (code.length > 2 ? code.charAt(0).toUpperCase() + code.slice(1).toLowerCase() : code.toUpperCase());
 }
 
 // Quick line count (counts newlines without parsing CSV)
@@ -271,8 +277,9 @@ function savePricing(data) {
 
 // Generate a unique key for an item's price
 function getPriceKey(country, state = '', city = '', category = '') {
+    const resolvedCountry = country ? getCountryName(country).toUpperCase() : '';
     return [
-        country?.toUpperCase() || '',
+        resolvedCountry,
         state?.toLowerCase().trim() || '',
         city?.toLowerCase().trim() || '',
         category?.toLowerCase().trim() || ''
@@ -408,7 +415,7 @@ app.get('/api/merged/categories', async (req, res) => {
             success: true,
             message: 'Categories fetched',
             data: {
-                country: country.toUpperCase(),
+                country: getCountryName(country) === 'United States' ? country.toUpperCase() : getCountryName(country),
                 totalCategories,
                 categories: paginatedCategories,
                 pagination: {
@@ -441,7 +448,7 @@ app.get('/api/merged/data', async (req, res) => {
         res.json({
             success: true,
             message: 'Data fetched',
-            data: { country: country.toUpperCase(), category: formatCategoryName(category), ...result }
+            data: { country: getCountryName(country) === 'United States' ? country.toUpperCase() : getCountryName(country), category: formatCategoryName(category), ...result }
         });
     } catch (error) {
         console.error('Error:', error);
@@ -488,7 +495,7 @@ app.get('/api/merged/preview', async (req, res) => {
             success: true,
             message: 'Preview data fetched',
             data: {
-                country: country.toUpperCase(),
+                country: getCountryName(country) === 'United States' ? country.toUpperCase() : getCountryName(country),
                 category: formatCategoryName(category),
                 columns,
                 rows
@@ -530,7 +537,11 @@ app.get('/api/merged/categories-count', async (req, res) => {
 
         // 2. Pre-computed disk cache (instant)
         if (lowerState && !lowerCategory) {
-            let cacheFileName = `${country.toLowerCase()}_state_${lowerState.replace(/\s+/g, '_')}`;
+            let countryNamePrefix = getCountryName(country).toLowerCase();
+            if (countryNamePrefix === 'united states') countryNamePrefix = 'us';
+            else if (countryNamePrefix === 'united kingdom') countryNamePrefix = 'uk';
+            
+            let cacheFileName = `${countryNamePrefix}_state_${lowerState.replace(/\s+/g, '_')}`;
             if (lowerCity) {
                 cacheFileName += `_city_${lowerCity.replace(/\s+/g, '_')}`;
             }
@@ -629,7 +640,7 @@ app.get('/api/merged/categories-count', async (req, res) => {
             success: true,
             message: 'Filtered category counts fetched',
             data: {
-                country: country.toUpperCase(),
+                country: getCountryName(country) === 'United States' ? country.toUpperCase() : getCountryName(country),
                 state: state,
                 city: city,
                 category: category || undefined,
@@ -709,9 +720,13 @@ app.get('/api/merged/browse', async (req, res) => {
                 }
             } else {
                 // Handle state/city browse. Uses cached data if available for fast response.
+                let countryNamePrefix = getCountryName(country).toLowerCase();
+                if (countryNamePrefix === 'united states') countryNamePrefix = 'us';
+                else if (countryNamePrefix === 'united kingdom') countryNamePrefix = 'uk';
+                
                 const cacheFileName = lowerState && lowerCity 
-                    ? `${country.toLowerCase()}_state_${lowerState.replace(/\s+/g, '_')}_city_${lowerCity.replace(/\s+/g, '_')}.json`
-                    : `${country.toLowerCase()}_state_${lowerState.replace(/\s+/g, '_')}.json`;
+                    ? `${countryNamePrefix}_state_${lowerState.replace(/\s+/g, '_')}_city_${lowerCity.replace(/\s+/g, '_')}.json`
+                    : `${countryNamePrefix}_state_${lowerState.replace(/\s+/g, '_')}.json`;
                 
                 const cacheFilePath = path.join(mergedDir, '.cache', cacheFileName);
                 if (fs.existsSync(cacheFilePath)) {
