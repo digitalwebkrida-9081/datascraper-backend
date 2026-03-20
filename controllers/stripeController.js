@@ -35,6 +35,7 @@ exports.createCheckoutSession = async (req, res) => {
             payment_method_types: ['card'],
             customer_email: email,
             client_reference_id: id,
+            allow_promotion_codes: true,
             metadata: {
                 fullName,
                 phoneNumber,
