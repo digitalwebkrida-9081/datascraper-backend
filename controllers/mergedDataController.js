@@ -29,12 +29,13 @@ function getCountryCodeFromName(name) {
         'France': 'FR',
         'Japan': 'JP',
         'Brazil': 'BR',
-        'Mexico': 'MX'
+        'Mexico': 'MX',
+        'Austria': 'AT'
     };
     for (const [code, n] of Object.entries(countries)) {
         if (n.toLowerCase() === name.toLowerCase()) return code;
     }
-    return name.substring(0, 2).toUpperCase();
+    return name.toUpperCase(); // Ensure unique code instead of 2 letters
 }
 
 
@@ -550,7 +551,19 @@ function getCountryName(code) {
         'FR': 'France',
         'JP': 'Japan',
         'BR': 'Brazil',
-        'MX': 'Mexico'
+        'MX': 'Mexico',
+        'AT': 'Austria'
     };
-    return countries[code.toUpperCase()] || code.toUpperCase();
+    if (countries[code.toUpperCase()]) return countries[code.toUpperCase()];
+    
+    // Dynamic fallback to exact folder name on disk to prevent Linux case-sensitivity issues
+    try {
+        if (fs.existsSync(SAMPLE_DATA_BASE)) {
+            const items = fs.readdirSync(SAMPLE_DATA_BASE, { withFileTypes: true });
+            const match = items.find(item => item.isDirectory() && item.name.toUpperCase() === code.toUpperCase());
+            if (match) return match.name;
+        }
+    } catch(e) {}
+
+    return code.charAt(0).toUpperCase() + code.slice(1).toLowerCase(); // basic fallback
 }
