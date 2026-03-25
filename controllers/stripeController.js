@@ -5,9 +5,7 @@ const XLSX = require('xlsx');
 const FormSubmission = require('../models/FormSubmission');
 
 // Optional: you can test with standard price for now
-const stripe = Stripe(process.env.STRIPE_SECRET_KEY, {
-    apiVersion: '2025-01-27'
-});
+const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 
 exports.createCheckoutSession = async (req, res) => {
     try {
@@ -34,7 +32,7 @@ exports.createCheckoutSession = async (req, res) => {
         });
 
         const session = await stripe.checkout.sessions.create({
-            automatic_payment_methods: { enabled: true },
+            payment_method_types: ['card', 'alipay', 'link'],
             customer_email: email,
             client_reference_id: id,
             allow_promotion_codes: true,
