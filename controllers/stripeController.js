@@ -9,7 +9,9 @@ const FormSubmission = require('../models/FormSubmission');
 if (!process.env.STRIPE_SECRET_KEY) {
     console.error('ERROR: STRIPE_SECRET_KEY is not defined in environment variables.');
 }
-const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+const stripe = Stripe(process.env.STRIPE_SECRET_KEY, {
+    apiVersion: '2024-12-18.acacia' // Setting a modern API version explicitly
+});
 
 exports.createCheckoutSession = async (req, res) => {
     try {
