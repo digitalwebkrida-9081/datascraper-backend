@@ -41,18 +41,14 @@ exports.createCheckoutSession = async (req, res) => {
     customer_email: email,
     client_reference_id: id,
 
-    automatic_payment_methods: {
-        enabled: true,
-    },
-
     line_items: [
         {
             price_data: {
-                currency: 'inr', // 🔥 important
+                currency: currency,
                 product_data: {
                     name: datasetName || `Dataset: ${id}`,
                 },
-                unit_amount: Math.round((price || 199) * 100),
+                unit_amount: amount,
             },
             quantity: 1,
         },
@@ -62,7 +58,6 @@ exports.createCheckoutSession = async (req, res) => {
     success_url: successUrl,
     cancel_url: cancelUrl,
 };
-
         if (process.env.STRIPE_PAYMENT_METHOD_CONFIGURATION_ID) {
             sessionOptions.payment_method_configuration = process.env.STRIPE_PAYMENT_METHOD_CONFIGURATION_ID;
         }
