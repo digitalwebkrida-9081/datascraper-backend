@@ -35,11 +35,7 @@ exports.createCheckoutSession = async (req, res) => {
             payment_method_types: [
                 'card', 
                 'alipay', 
-                'link', 
-                'wechat_pay', 
-                'bancontact', 
-                'blik', 
-                'mb_way'
+                'link'
             ],
             customer_email: email,
             client_reference_id: id,
@@ -70,7 +66,7 @@ exports.createCheckoutSession = async (req, res) => {
         res.json({ success: true, url: session.url, sessionId: session.id });
     } catch (error) {
         console.error('Stripe Checkout Error:', error);
-        res.status(500).json({ success: false, message: 'Internal Server Error', error: error.message });
+        res.status(500).json({ success: false, message: 'Internal Server Error' });
     }
 };
 
