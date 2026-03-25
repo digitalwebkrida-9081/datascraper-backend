@@ -32,11 +32,10 @@ exports.createCheckoutSession = async (req, res) => {
         });
 
         const session = await stripe.checkout.sessions.create({
-            payment_method_types: [
-                'card', 
-                'alipay', 
-                'link'
-            ],
+            automatic_payment_methods: {
+                enabled: true,
+            },
+            payment_method_configuration: process.env.STRIPE_PAYMENT_METHOD_CONFIGURATION_ID,
             customer_email: email,
             client_reference_id: id,
             allow_promotion_codes: true,
