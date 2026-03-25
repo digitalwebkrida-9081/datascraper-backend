@@ -38,26 +38,32 @@ exports.createCheckoutSession = async (req, res) => {
         });
 
         const sessionOptions = {
-    customer_email: email,
-    client_reference_id: id,
-
-    line_items: [
-        {
-            price_data: {
-                currency: currency,
-                product_data: {
-                    name: datasetName || `Dataset: ${id}`,
-                },
-                unit_amount: amount,
+            customer_email: email,
+            client_reference_id: id,
+            allow_promotion_codes: true,
+            metadata: {
+                fullName,
+                phoneNumber,
+                datasetId: id,
             },
-            quantity: 1,
-        },
-    ],
+            line_items: [
+                {
+                    price_data: {
+                        currency: 'usd', 
+                        product_data: {
+                            name: datasetName || `Dataset: ${id}`,
+                            description: `Full data export for ${id}`,
+                        },
+                        unit_amount: Math.round((price || 199) * 100), 
+                    },
+                    quantity: 1,
+                },
+            ],
+            mode: 'payment',
+            success_url: successUrl || `${process.env.FRONTEND_URL || 'http://localhost:3000'}/checkout/success?session_id={CHECKOUT_SESSION_ID}&dataset_id=${id}`,
+            cancel_url: cancelUrl || `${process.env.FRONTEND_URL || 'http://localhost:3000'}/checkout/cancel?dataset_id=${id}`,
+        };
 
-    mode: 'payment',
-    success_url: successUrl,
-    cancel_url: cancelUrl,
-};
         if (process.env.STRIPE_PAYMENT_METHOD_CONFIGURATION_ID) {
             sessionOptions.payment_method_configuration = process.env.STRIPE_PAYMENT_METHOD_CONFIGURATION_ID;
         }
