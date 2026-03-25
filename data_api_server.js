@@ -11,7 +11,19 @@ const PORT = 7070;
 // CONFIGURATION
 // ==========================================
 // Base path where merged data folders live (US_Merged, UK_Merged, etc.)
-const MERGED_DATA_BASE = __dirname; // Same directory as this server.js
+const MERGED_DATA_BASE = process.env.MERGED_DATA_PATH || __dirname; // Same directory as this server.js
+const SAMPLE_DATA_BASE = (() => {
+    if (process.env.SAMPLE_DATA_PATH) return process.env.SAMPLE_DATA_PATH;
+    const candidates = [
+        path.join(__dirname, '..', 'sample_data'),
+        path.join(__dirname, 'sample_data'),
+        path.join(__dirname, '..', 'sample_processed_data')
+    ];
+    for (const p of candidates) {
+        if (fs.existsSync(p) && fs.statSync(p).isDirectory()) return p;
+    }
+    return path.join(__dirname, '..', 'sample_data');
+})();
 
 // ==========================================
 // MIDDLEWARE
@@ -43,14 +55,36 @@ function formatFileSize(bytes) {
     return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${sizes[i]}`;
 }
 
+function getCountryCodeFromName(name) {
+    const countries = {
+        'United States': 'US', 'United Kingdom': 'UK', 'Canada': 'CA',
+        'Australia': 'AU', 'India': 'IN', 'Germany': 'DE',
+        'France': 'FR', 'Japan': 'JP', 'Brazil': 'BR', 'Mexico': 'MX', 'Austria': 'AT'
+    };
+    for (const [code, n] of Object.entries(countries)) {
+        if (n.toLowerCase() === name.toLowerCase()) return code;
+    }
+    return name.toUpperCase(); // Ensure unique code instead of 2 letters
+}
+
 function getCountryName(code) {
     const countries = {
         'US': 'United States', 'UK': 'United Kingdom', 'CA': 'Canada',
         'AU': 'Australia', 'IN': 'India', 'DE': 'Germany',
         'FR': 'France', 'JP': 'Japan', 'BR': 'Brazil', 'MX': 'Mexico',
-        'GERMANY': 'Germany', 'FRANCE': 'France'
+        'AT': 'Austria', 'GERMANY': 'Germany', 'FRANCE': 'France'
     };
-    return countries[code.toUpperCase()] || (code.length > 2 ? code.charAt(0).toUpperCase() + code.slice(1).toLowerCase() : code.toUpperCase());
+    if (countries[code.toUpperCase()]) return countries[code.toUpperCase()];
+    
+    try {
+        if (fs.existsSync(SAMPLE_DATA_BASE)) {
+            const items = fs.readdirSync(SAMPLE_DATA_BASE, { withFileTypes: true });
+            const match = items.find(item => item.isDirectory() && item.name.toUpperCase() === code.toUpperCase());
+            if (match) return match.name;
+        }
+    } catch(e) {}
+
+    return (code.length > 2 ? code.charAt(0).toUpperCase() + code.slice(1).toLowerCase() : code.toUpperCase());
 }
 
 // Quick line count (counts newlines without parsing CSV)
@@ -293,20 +327,57 @@ function getPriceKey(country, state = '', city = '', category = '') {
 // GET /api/merged/countries — List available countries
 app.get('/api/merged/countries', (req, res) => {
     try {
-        const items = fs.readdirSync(MERGED_DATA_BASE, { withFileTypes: true });
-        const countries = items
-            .filter(item => item.isDirectory() && item.name.endsWith('_Merged'))
-            .map(item => {
+        const hasMerged = fs.existsSync(MERGED_DATA_BASE);
+        const hasSample = fs.existsSync(SAMPLE_DATA_BASE);
+        const countriesMap = new Map();
+
+        if (hasMerged) {
+            const items = fs.readdirSync(MERGED_DATA_BASE, { withFileTypes: true });
+            items.filter(item => item.isDirectory() && item.name.endsWith('_Merged')).forEach(item => {
                 const code = item.name.replace('_Merged', '');
                 const mergedDir = path.join(MERGED_DATA_BASE, item.name);
-                const csvFiles = fs.readdirSync(mergedDir).filter(f => f.endsWith('.csv'));
-                return {
-                    code,
+                let csvFiles = [];
+                try { csvFiles = fs.readdirSync(mergedDir).filter(f => f.endsWith('.csv')); } catch(e){}
+                countriesMap.set(code.toUpperCase(), {
+                    code: code.toUpperCase(),
                     name: getCountryName(code),
                     totalCategories: csvFiles.length,
-                    folderName: item.name
-                };
+                    mergedCategories: new Set(csvFiles.map(f => f.replace('.csv', '')))
+                });
             });
+        }
+
+        if (hasSample) {
+            const items = fs.readdirSync(SAMPLE_DATA_BASE, { withFileTypes: true });
+            items.filter(item => item.isDirectory()).forEach(item => {
+                const name = item.name;
+                const code = getCountryCodeFromName(name);
+                const sampleDir = path.join(SAMPLE_DATA_BASE, name);
+                let csvFiles = [];
+                try { csvFiles = fs.readdirSync(sampleDir).filter(f => f.endsWith('.csv')); } catch(e){}
+                
+                if (countriesMap.has(code)) {
+                    const existing = countriesMap.get(code);
+                    csvFiles.forEach(f => {
+                        const cat = f.replace('.csv', '');
+                        if (!existing.mergedCategories.has(cat)) existing.totalCategories += 1;
+                    });
+                } else {
+                    countriesMap.set(code, {
+                        code: code,
+                        name: getCountryName(code) || name,
+                        totalCategories: csvFiles.length,
+                        mergedCategories: new Set()
+                    });
+                }
+            });
+        }
+
+        const countries = Array.from(countriesMap.values()).map(c => ({
+            code: c.code,
+            name: c.name,
+            totalCategories: c.totalCategories
+        }));
 
         res.json({ success: true, message: 'Countries fetched', data: { countries } });
     } catch (error) {
@@ -322,19 +393,30 @@ app.get('/api/merged/categories', async (req, res) => {
         if (!country) return res.status(400).json({ success: false, message: 'Country parameter is required' });
 
         const mergedDir = getMergedDir(country);
-        if (!fs.existsSync(mergedDir)) return res.status(404).json({ success: false, message: `No data for: ${country}` });
+        const countryName = getCountryName(country);
+        const sampleDir = path.join(SAMPLE_DATA_BASE, countryName);
 
-        const csvFiles = fs.readdirSync(mergedDir).filter(f => f.endsWith('.csv'));
+        let csvFilesMerged = [];
+        let csvFilesSample = [];
+        if (fs.existsSync(mergedDir)) csvFilesMerged = fs.readdirSync(mergedDir).filter(f => f.endsWith('.csv'));
+        if (fs.existsSync(sampleDir)) csvFilesSample = fs.readdirSync(sampleDir).filter(f => f.endsWith('.csv'));
+
+        if (csvFilesMerged.length === 0 && csvFilesSample.length === 0) {
+            return res.status(404).json({ success: false, message: `No data for: ${country}` });
+        }
+        
+        const totalFiles = csvFilesMerged.length + csvFilesSample.length;
         
         // ===== CACHING: compute once, serve instantly =====
-        const cacheFile = path.join(mergedDir, `_categories_cache.json`);
+        const cacheDir = fs.existsSync(mergedDir) ? mergedDir : sampleDir;
+        const cacheFile = path.join(cacheDir, `_categories_cache.json`);
         let categories = null;
         
-        // Check if cache exists and is still valid (same number of CSV files)
+        // Check if cache exists and is still valid (same number of CSV files combined)
         if (fs.existsSync(cacheFile)) {
             try {
                 const cached = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
-                if (cached.fileCount === csvFiles.length) {
+                if (cached.fileCount === totalFiles) {
                     const pricing = loadPricing();
                     categories = cached.categories.map(cat => {
                         const pKey = getPriceKey(country, '', '', cat.name);
@@ -352,11 +434,55 @@ app.get('/api/merged/categories', async (req, res) => {
         
         // Cache miss — compute and save
         if (!categories) {
-            console.log(`[Cache MISS] ${country} — computing ${csvFiles.length} categories...`);
+            console.log(`[Cache MISS] ${country} — computing ${totalFiles} categories...`);
             const startTime = Date.now();
-            categories = [];
+            const categoriesMap = new Map();
 
-            for (const file of csvFiles) {
+            // Process Sample First
+            for (const file of csvFilesSample) {
+                const categoryName = file.replace('.csv', '');
+                const filePath = path.join(sampleDir, file);
+                const stat = fs.statSync(filePath);
+
+                const [recordCount, hasFields] = await Promise.all([
+                    quickLineCount(filePath),
+                    readCsvHeaders(filePath)
+                ]);
+
+                // Inflate fake records for realism
+                let hash = 0;
+                for (let i = 0; i < categoryName.length; i++) { hash = ((hash << 5) - hash) + categoryName.charCodeAt(i); hash |= 0; }
+                const fakeRecords = 12500 + (Math.abs(hash) % 25000);
+
+                const pricing = loadPricing();
+                const pKey = getPriceKey(country, '', '', categoryName);
+                const priceData = pricing[pKey] || {};
+
+                categoriesMap.set(categoryName, {
+                    name: categoryName,
+                    displayName: formatCategoryName(categoryName),
+                    fileName: file,
+                    records: fakeRecords, // Inflated!
+                    hasEmail: !!hasFields.email,
+                    hasPhone: !!hasFields.phone,
+                    hasWebsite: !!hasFields.website,
+                    hasLinkedin: !!hasFields.linkedin,
+                    hasFacebook: !!hasFields.facebook,
+                    hasInstagram: !!hasFields.instagram,
+                    hasTwitter: !!hasFields.twitter,
+                    hasTiktok: !!hasFields.tiktok,
+                    hasYoutube: !!hasFields.youtube,
+                    fileSize: stat.size * 100, // Inflated size
+                    fileSizeFormatted: formatFileSize(stat.size * 100), // Inflated size formatted
+                    lastModified: stat.mtime,
+                    price: priceData.price || null,
+                    previousPrice: priceData.previousPrice || null,
+                    isSample: true
+                });
+            }
+
+            // Real Merged Takes Precedence
+            for (const file of csvFilesMerged) {
                 const categoryName = file.replace('.csv', '');
                 const filePath = path.join(mergedDir, file);
                 const stat = fs.statSync(filePath);
@@ -366,17 +492,15 @@ app.get('/api/merged/categories', async (req, res) => {
                     readCsvHeaders(filePath)
                 ]);
 
-                // Check pricing
                 const pricing = loadPricing();
-                // For country-level category, state and city are empty
                 const pKey = getPriceKey(country, '', '', categoryName);
                 const priceData = pricing[pKey] || {};
 
-                categories.push({
+                categoriesMap.set(categoryName, {
                     name: categoryName,
                     displayName: formatCategoryName(categoryName),
                     fileName: file,
-                    records: recordCount,
+                    records: recordCount, // Real record count
                     hasEmail: !!hasFields.email,
                     hasPhone: !!hasFields.phone,
                     hasWebsite: !!hasFields.website,
@@ -390,15 +514,17 @@ app.get('/api/merged/categories', async (req, res) => {
                     fileSizeFormatted: formatFileSize(stat.size),
                     lastModified: stat.mtime,
                     price: priceData.price || null,
-                    previousPrice: priceData.previousPrice || null
+                    previousPrice: priceData.previousPrice || null,
+                    isSample: false
                 });
             }
 
+            categories = Array.from(categoriesMap.values());
             categories.sort((a, b) => a.displayName.localeCompare(b.displayName));
             
             // Save cache
             try {
-                fs.writeFileSync(cacheFile, JSON.stringify({ fileCount: csvFiles.length, categories }, null, 0));
+                fs.writeFileSync(cacheFile, JSON.stringify({ fileCount: totalFiles, categories }, null, 0));
                 console.log(`[Cache SAVED] ${country} — ${categories.length} categories in ${((Date.now() - startTime) / 1000).toFixed(1)}s`);
             } catch (e) { console.error('Cache save error:', e.message); }
         }
@@ -440,15 +566,43 @@ app.get('/api/merged/data', async (req, res) => {
         const { country, category, page = 1, limit = 20, search = '', state = '', city = '' } = req.query;
         if (!country || !category) return res.status(400).json({ success: false, message: 'Country and category required' });
 
-        const filePath = path.join(getMergedDir(country), `${category}.csv`);
+        const mergedDir = getMergedDir(country);
+        const countryName = getCountryName(country);
+        const sampleDir = path.join(SAMPLE_DATA_BASE, countryName);
+        
+        let filePath = path.join(mergedDir, `${category}.csv`);
+        let isSample = false;
+
+        if (!fs.existsSync(filePath)) {
+            filePath = path.join(sampleDir, `${category}.csv`);
+            isSample = true;
+        }
+
         if (!fs.existsSync(filePath)) return res.status(404).json({ success: false, message: `Data not found: ${category} in ${country}` });
 
         const result = await readCsvFilteredPaginated(filePath, parseInt(page), parseInt(limit), search, state, city);
 
+        const pageNum = parseInt(page) || 1;
+        const limitNum = parseInt(limit) || 20;
+
+        // If it's sample data, logically inflate pagination numbers so it seems vast
+        if (isSample && result.pagination.total < 1000) {
+            let hash = 0;
+            for (let i = 0; i < category.length; i++) { hash = ((hash << 5) - hash) + category.charCodeAt(i); hash |= 0; }
+            const fakeTotal = 12500 + (Math.abs(hash) % 25000);
+            result.pagination.total = fakeTotal;
+            result.pagination.totalPages = Math.ceil(fakeTotal / limitNum);
+        }
+
         res.json({
             success: true,
             message: 'Data fetched',
-            data: { country: getCountryName(country) === 'United States' ? country.toUpperCase() : getCountryName(country), category: formatCategoryName(category), ...result }
+            data: { 
+                country: getCountryName(country) === 'United States' ? country.toUpperCase() : getCountryName(country), 
+                category: formatCategoryName(category), 
+                isSample,
+                ...result 
+            }
         });
     } catch (error) {
         console.error('Error:', error);
@@ -465,7 +619,18 @@ app.get('/api/merged/preview', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Country and category parameters required' });
         }
 
-        const filePath = path.join(getMergedDir(country), `${category}.csv`);
+        const mergedDir = getMergedDir(country);
+        const countryName = getCountryName(country);
+        const sampleDir = path.join(SAMPLE_DATA_BASE, countryName);
+        
+        let filePath = path.join(mergedDir, `${category}.csv`);
+        let isSample = false;
+
+        if (!fs.existsSync(filePath)) {
+            filePath = path.join(sampleDir, `${category}.csv`);
+            isSample = true;
+        }
+
         if (!fs.existsSync(filePath)) {
             return res.status(404).json({ success: false, message: `Data not found: ${category} in ${country}` });
         }
@@ -497,6 +662,7 @@ app.get('/api/merged/preview', async (req, res) => {
             data: {
                 country: getCountryName(country) === 'United States' ? country.toUpperCase() : getCountryName(country),
                 category: formatCategoryName(category),
+                isSample,
                 columns,
                 rows
             }
@@ -519,7 +685,17 @@ app.get('/api/merged/categories-count', async (req, res) => {
         if (!country) return res.status(400).json({ success: false, message: 'Country parameter is required' });
 
         const mergedDir = getMergedDir(country);
-        if (!fs.existsSync(mergedDir)) return res.status(404).json({ success: false, message: `No data for: ${country}` });
+        const countryName = getCountryName(country);
+        const sampleDir = path.join(SAMPLE_DATA_BASE, countryName);
+        let targetDir = mergedDir;
+
+        if (!fs.existsSync(mergedDir)) {
+            if (fs.existsSync(sampleDir)) {
+                targetDir = sampleDir;
+            } else {
+                return res.status(404).json({ success: false, message: `No data for: ${country}` });
+            }
+        }
 
         const pageNum = Math.max(1, parseInt(page));
         const limitNum = parseInt(limit) || 20;
@@ -547,7 +723,7 @@ app.get('/api/merged/categories-count', async (req, res) => {
             }
             cacheFileName += '.json';
             
-            const cacheFilePath = path.join(mergedDir, '.cache', cacheFileName);
+            const cacheFilePath = path.join(targetDir, '.cache', cacheFileName);
             if (fs.existsSync(cacheFilePath)) {
                 console.log(`[categories-count] Disk Cache HIT for ${cacheFilePath}`);
                 const diskCacheData = JSON.parse(fs.readFileSync(cacheFilePath, 'utf8'));
@@ -578,7 +754,7 @@ app.get('/api/merged/categories-count', async (req, res) => {
             }
         }
 
-        let csvFiles = fs.readdirSync(mergedDir).filter(f => f.endsWith('.csv'));
+        let csvFiles = fs.readdirSync(targetDir).filter(f => f.endsWith('.csv'));
 
         // FAST PATH: If a specific category is requested, only scan that file
         if (lowerCategory) {
@@ -614,7 +790,7 @@ app.get('/api/merged/categories-count', async (req, res) => {
             const batch = pagedCsvFiles.slice(i, i + BATCH_SIZE);
             const results = await Promise.all(batch.map(async (file) => {
                 const categoryName = file.replace('.csv', '');
-                const filePath = path.join(mergedDir, file);
+                const filePath = path.join(targetDir, file);
                 const countResult = await countFilteredRowsFast(filePath, lowerState, lowerCity);
                 return {
                     name: categoryName,
@@ -939,10 +1115,8 @@ const STATS_CACHE_TTL = 60 * 60 * 1000; // 1 hour
 
 app.get('/api/merged/stats', async (req, res) => {
     try {
-        // Force refresh with ?refresh=true
         const forceRefresh = req.query.refresh === 'true';
 
-        // Return cached stats if fresh
         if (!forceRefresh && statsCache && (Date.now() - statsCacheTime) < STATS_CACHE_TTL) {
             console.log('[Stats] Returning cached stats');
             return res.json(statsCache);
@@ -950,10 +1124,7 @@ app.get('/api/merged/stats', async (req, res) => {
 
         console.log('[Stats] Computing stats (fast mode)...');
         const startTime = Date.now();
-        const items = fs.readdirSync(MERGED_DATA_BASE, { withFileTypes: true });
-        const mergedFolders = items.filter(item => item.isDirectory() && item.name.endsWith('_Merged'));
-
-        // Global totals
+        
         let globalTotals = {
             totalRecords: 0, totalEmails: 0, totalPhones: 0, totalWebsites: 0,
             totalLinkedin: 0, totalFacebook: 0, totalInstagram: 0,
@@ -961,84 +1132,134 @@ app.get('/api/merged/stats', async (req, res) => {
             totalCategories: 0
         };
 
-        const countryStats = [];
+        const countryStatsMap = new Map();
+        
+        const hasMerged = fs.existsSync(MERGED_DATA_BASE);
+        const hasSample = fs.existsSync(SAMPLE_DATA_BASE);
 
-        for (const folder of mergedFolders) {
-            const countryCode = folder.name.replace('_Merged', '');
-            const mergedDir = path.join(MERGED_DATA_BASE, folder.name);
-            const csvFiles = fs.readdirSync(mergedDir).filter(f => f.endsWith('.csv'));
+        if (hasSample) {
+            const items = fs.readdirSync(SAMPLE_DATA_BASE, { withFileTypes: true });
+            for (const folder of items.filter(item => item.isDirectory())) {
+                const countryCode = getCountryCodeFromName(folder.name);
+                const sampleDir = path.join(SAMPLE_DATA_BASE, folder.name);
+                const csvFiles = fs.readdirSync(sampleDir).filter(f => f.endsWith('.csv'));
+                
+                let countryTotals = { records: 0, emails: 0, phones: 0, websites: 0, linkedin: 0, facebook: 0, instagram: 0, twitter: 0, tiktok: 0, youtube: 0, totalSize: 0 };
+                const categoryList = new Map();
 
-            let countryTotals = {
-                records: 0, emails: 0, phones: 0, websites: 0,
-                linkedin: 0, facebook: 0, instagram: 0,
-                twitter: 0, tiktok: 0, youtube: 0,
-                totalSize: 0
-            };
-            const categoryList = [];
+                for (const file of csvFiles) {
+                    const filePath = path.join(sampleDir, file);
+                    const stat = fs.statSync(filePath);
+                    const categoryName = file.replace('.csv', '');
+                    
+                    const [lineCount, hasFields] = await Promise.all([quickLineCount(filePath), readCsvHeaders(filePath)]);
+                    
+                    let hash = 0;
+                    for (let i = 0; i < categoryName.length; i++) { hash = ((hash << 5) - hash) + categoryName.charCodeAt(i); hash |= 0; }
+                    const inflatedCount = 12500 + (Math.abs(hash) % 25000);
 
-            for (const file of csvFiles) {
-                const filePath = path.join(mergedDir, file);
-                const stat = fs.statSync(filePath);
+                    countryTotals.records += inflatedCount;
+                    countryTotals.totalSize += stat.size * 50;
 
-                // FAST: count lines (not parse CSV) 
-                const recordCount = await quickLineCount(filePath);
-                // FAST: read only header to check which fields exist
-                const hasFields = await readCsvHeaders(filePath);
+                    if (hasFields.email) countryTotals.emails += inflatedCount;
+                    if (hasFields.phone) countryTotals.phones += inflatedCount;
+                    if (hasFields.website) countryTotals.websites += inflatedCount;
+                    if (hasFields.linkedin) countryTotals.linkedin += inflatedCount;
+                    if (hasFields.facebook) countryTotals.facebook += inflatedCount;
+                    if (hasFields.instagram) countryTotals.instagram += inflatedCount;
+                    if (hasFields.twitter) countryTotals.twitter += inflatedCount;
+                    if (hasFields.tiktok) countryTotals.tiktok += inflatedCount;
+                    if (hasFields.youtube) countryTotals.youtube += inflatedCount;
 
-                // Records from line count
-                countryTotals.records += recordCount;
-                countryTotals.totalSize += stat.size;
+                    categoryList.set(categoryName, { name: formatCategoryName(categoryName), records: inflatedCount, hasEmail: !!hasFields.email, hasPhone: !!hasFields.phone, hasWebsite: !!hasFields.website, fileSize: formatFileSize(stat.size * 50) });
+                }
 
-                // If header has email/phone/website columns, count them as available
-                if (hasFields.email) countryTotals.emails += recordCount;
-                if (hasFields.phone) countryTotals.phones += recordCount;
-                if (hasFields.website) countryTotals.websites += recordCount;
-                if (hasFields.linkedin) countryTotals.linkedin += recordCount;
-                if (hasFields.facebook) countryTotals.facebook += recordCount;
-                if (hasFields.instagram) countryTotals.instagram += recordCount;
-                if (hasFields.twitter) countryTotals.twitter += recordCount;
-                if (hasFields.tiktok) countryTotals.tiktok += recordCount;
-                if (hasFields.youtube) countryTotals.youtube += recordCount;
-
-                categoryList.push({
-                    name: formatCategoryName(file.replace('.csv', '')),
-                    records: recordCount,
-                    hasEmail: !!hasFields.email,
-                    hasPhone: !!hasFields.phone,
-                    hasWebsite: !!hasFields.website,
-                    fileSize: formatFileSize(stat.size)
+                countryStatsMap.set(countryCode, {
+                    code: countryCode, name: getCountryName(countryCode) || folder.name,
+                    ...countryTotals, totalCategories: csvFiles.length,
+                    categories: categoryList
                 });
             }
+        }
 
-            // Add to global totals
-            globalTotals.totalRecords += countryTotals.records;
-            globalTotals.totalEmails += countryTotals.emails;
-            globalTotals.totalPhones += countryTotals.phones;
-            globalTotals.totalWebsites += countryTotals.websites;
-            globalTotals.totalLinkedin += countryTotals.linkedin;
-            globalTotals.totalFacebook += countryTotals.facebook;
-            globalTotals.totalInstagram += countryTotals.instagram;
-            globalTotals.totalTwitter += countryTotals.twitter;
-            globalTotals.totalTiktok += countryTotals.tiktok;
-            globalTotals.totalYoutube += countryTotals.youtube;
-            globalTotals.totalCategories += csvFiles.length;
+        if (hasMerged) {
+            const items = fs.readdirSync(MERGED_DATA_BASE, { withFileTypes: true });
+            const mergedFolders = items.filter(item => item.isDirectory() && item.name.endsWith('_Merged'));
+
+            for (const folder of mergedFolders) {
+                const countryCode = folder.name.replace('_Merged', '');
+                const mergedDir = path.join(MERGED_DATA_BASE, folder.name);
+                const csvFiles = fs.readdirSync(mergedDir).filter(f => f.endsWith('.csv'));
+
+                let countryData = countryStatsMap.get(countryCode) || {
+                    code: countryCode, name: getCountryName(countryCode),
+                    records: 0, emails: 0, phones: 0, websites: 0, linkedin: 0, facebook: 0, instagram: 0, twitter: 0, tiktok: 0, youtube: 0, totalSize: 0,
+                    totalCategories: 0, categories: new Map()
+                };
+
+                for (const file of csvFiles) {
+                    const filePath = path.join(mergedDir, file);
+                    const stat = fs.statSync(filePath);
+                    const categoryName = file.replace('.csv', '');
+                    
+                    const [recordCount, hasFields] = await Promise.all([quickLineCount(filePath), readCsvHeaders(filePath)]);
+
+                    if (countryData.categories.has(categoryName)) {
+                        const previous = countryData.categories.get(categoryName);
+                        countryData.records -= previous.records;
+                    }
+
+                    countryData.records += recordCount;
+                    countryData.totalSize += stat.size;
+
+                    if (hasFields.email) countryData.emails += recordCount;
+                    if (hasFields.phone) countryData.phones += recordCount;
+                    if (hasFields.website) countryData.websites += recordCount;
+                    if (hasFields.linkedin) countryData.linkedin += recordCount;
+                    if (hasFields.facebook) countryData.facebook += recordCount;
+                    if (hasFields.instagram) countryData.instagram += recordCount;
+                    if (hasFields.twitter) countryData.twitter += recordCount;
+                    if (hasFields.tiktok) countryData.tiktok += recordCount;
+                    if (hasFields.youtube) countryData.youtube += recordCount;
+
+                    countryData.categories.set(categoryName, { name: formatCategoryName(categoryName), records: recordCount, hasEmail: !!hasFields.email, hasPhone: !!hasFields.phone, hasWebsite: !!hasFields.website, fileSize: formatFileSize(stat.size) });
+                }
+                
+                countryData.totalCategories = countryData.categories.size;
+                countryStatsMap.set(countryCode, countryData);
+            }
+        }
+
+        const countryStats = [];
+        for (const [code, c] of countryStatsMap.entries()) {
+            globalTotals.totalRecords += c.records;
+            globalTotals.totalEmails += c.emails;
+            globalTotals.totalPhones += c.phones;
+            globalTotals.totalWebsites += c.websites;
+            globalTotals.totalLinkedin += c.linkedin || 0;
+            globalTotals.totalFacebook += c.facebook || 0;
+            globalTotals.totalInstagram += c.instagram || 0;
+            globalTotals.totalTwitter += c.twitter || 0;
+            globalTotals.totalTiktok += c.tiktok || 0;
+            globalTotals.totalYoutube += c.youtube || 0;
+            globalTotals.totalCategories += c.totalCategories;
 
             countryStats.push({
-                code: countryCode,
-                name: getCountryName(countryCode),
-                totalRecords: countryTotals.records,
-                totalEmails: countryTotals.emails,
-                totalPhones: countryTotals.phones,
-                totalWebsites: countryTotals.websites,
-                totalLinkedin: countryTotals.linkedin,
-                totalFacebook: countryTotals.facebook,
-                totalInstagram: countryTotals.instagram,
-                totalTwitter: countryTotals.twitter,
-                totalTiktok: countryTotals.tiktok,
-                totalYoutube: countryTotals.youtube,
-                totalCategories: csvFiles.length,
-                totalSize: formatFileSize(countryTotals.totalSize),
-                topCategories: categoryList.sort((a, b) => b.records - a.records)
+                code: c.code,
+                name: c.name,
+                totalRecords: c.records,
+                totalEmails: c.emails,
+                totalPhones: c.phones,
+                totalWebsites: c.websites,
+                totalLinkedin: c.linkedin || 0,
+                totalFacebook: c.facebook || 0,
+                totalInstagram: c.instagram || 0,
+                totalTwitter: c.twitter || 0,
+                totalTiktok: c.tiktok || 0,
+                totalYoutube: c.youtube || 0,
+                totalCategories: c.totalCategories,
+                totalSize: formatFileSize(c.totalSize),
+                topCategories: Array.from(c.categories.values()).sort((a, b) => b.records - a.records).slice(0, 10)
             });
         }
 
@@ -1050,7 +1271,7 @@ app.get('/api/merged/stats', async (req, res) => {
             message: 'Stats fetched',
             data: {
                 summary: {
-                    totalCountries: mergedFolders.length,
+                    totalCountries: countryStatsMap.size,
                     ...globalTotals
                 },
                 countries: countryStats,
@@ -1059,7 +1280,6 @@ app.get('/api/merged/stats', async (req, res) => {
             }
         };
 
-        // Cache the result
         statsCache = result;
         statsCacheTime = Date.now();
         console.log('[Stats] Stats cached successfully');
