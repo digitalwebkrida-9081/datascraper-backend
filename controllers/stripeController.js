@@ -5,7 +5,9 @@ const XLSX = require('xlsx');
 const FormSubmission = require('../models/FormSubmission');
 
 // Optional: you can test with standard price for now
-const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+const stripe = Stripe(process.env.STRIPE_SECRET_KEY, {
+    apiVersion: '2025-01-27'
+});
 
 exports.createCheckoutSession = async (req, res) => {
     try {
