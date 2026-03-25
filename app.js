@@ -26,6 +26,7 @@ const BlogAdmin = require('./models/BlogAdmin');
 const blogRoutes = require("./routes/blog");
 const uploadRoutes = require("./routes/upload");
 const stripeRoutes = require('./routes/stripe');
+const currencyRoutes = require('./routes/currency');
 const cors = require('cors'); 
 const path = require("path");
 
@@ -54,6 +55,7 @@ app.use('/api/posts', blogPostsRoutes);
 app.use('/api/auth', blogAuthRoutes);
 app.use("/api/blogs", blogRoutes);
 app.use("/api/upload", uploadRoutes);
+app.use('/api/currency', currencyRoutes);
 
 // Global Error Handler
 app.use((err, req, res, next) => {
