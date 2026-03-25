@@ -38,9 +38,6 @@ exports.createCheckoutSession = async (req, res) => {
         });
 
         const sessionOptions = {
-            automatic_payment_methods: {
-                enabled: true,
-            },
             customer_email: email,
             client_reference_id: id,
             allow_promotion_codes: true,
