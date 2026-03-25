@@ -1,3 +1,4 @@
+require('dotenv').config();
 const Stripe = require('stripe');
 const path = require('path');
 const fs = require('fs');
@@ -5,6 +6,9 @@ const XLSX = require('xlsx');
 const FormSubmission = require('../models/FormSubmission');
 
 // Optional: you can test with standard price for now
+if (!process.env.STRIPE_SECRET_KEY) {
+    console.error('ERROR: STRIPE_SECRET_KEY is not defined in environment variables.');
+}
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 
 exports.createCheckoutSession = async (req, res) => {
@@ -31,11 +35,10 @@ exports.createCheckoutSession = async (req, res) => {
             }
         });
 
-        const session = await stripe.checkout.sessions.create({
+        const sessionOptions = {
             automatic_payment_methods: {
                 enabled: true,
             },
-            payment_method_configuration: process.env.STRIPE_PAYMENT_METHOD_CONFIGURATION_ID,
             customer_email: email,
             client_reference_id: id,
             allow_promotion_codes: true,
@@ -47,12 +50,12 @@ exports.createCheckoutSession = async (req, res) => {
             line_items: [
                 {
                     price_data: {
-                        currency: 'usd', // or preferred currency
+                        currency: 'usd', 
                         product_data: {
                             name: datasetName || `Dataset: ${id}`,
                             description: `Full data export for ${id}`,
                         },
-                        unit_amount: Math.round((price || 199) * 100), // Stripe expects cents
+                        unit_amount: Math.round((price || 199) * 100), 
                     },
                     quantity: 1,
                 },
@@ -60,12 +63,22 @@ exports.createCheckoutSession = async (req, res) => {
             mode: 'payment',
             success_url: successUrl || `${process.env.FRONTEND_URL || 'http://localhost:3000'}/checkout/success?session_id={CHECKOUT_SESSION_ID}&dataset_id=${id}`,
             cancel_url: cancelUrl || `${process.env.FRONTEND_URL || 'http://localhost:3000'}/checkout/cancel?dataset_id=${id}`,
-        });
+        };
+
+        if (process.env.STRIPE_PAYMENT_METHOD_CONFIGURATION_ID) {
+            sessionOptions.payment_method_configuration = process.env.STRIPE_PAYMENT_METHOD_CONFIGURATION_ID;
+        }
+
+        const session = await stripe.checkout.sessions.create(sessionOptions);
 
         res.json({ success: true, url: session.url, sessionId: session.id });
     } catch (error) {
         console.error('Stripe Checkout Error:', error);
-        res.status(500).json({ success: false, message: 'Internal Server Error' });
+        res.status(500).json({ 
+            success: false, 
+            message: error.message || 'Internal Server Error',
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
     }
 };
 
