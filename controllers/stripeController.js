@@ -62,7 +62,7 @@ exports.createCheckoutSession = async (req, res) => {
         res.json({ success: true, url: session.url, sessionId: session.id });
     } catch (error) {
         console.error('Stripe Checkout Error:', error);
-        res.status(500).json({ success: false, message: 'Internal Server Error' });
+        res.status(500).json({ success: false, message: 'Internal Server Error', error: error.message });
     }
 };
 
