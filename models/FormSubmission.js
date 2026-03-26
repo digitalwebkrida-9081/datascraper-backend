@@ -26,6 +26,10 @@ const formSubmissionSchema = new mongoose.Schema({
         type: Object, // Store JSON details about the dataset they were interested in
         required: false
     },
+    source: {
+        type: String, // The website domain this lead came from (e.g., datasellerhub.com, businessdatalabs.com)
+        required: false
+    },
     note: {
         type: String,
         required: false

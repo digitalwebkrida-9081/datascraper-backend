@@ -8,7 +8,7 @@ const { successResponse, errorResponse } = require('../common/helper/responseHel
 // @access  Public
 router.post('/submit', async (req, res) => {
     try {
-        const { type, name, email, phone, message, datasetDetails } = req.body;
+        const { type, name, email, phone, message, datasetDetails, source } = req.body;
 
         if (!type || !email) {
             return errorResponse(res, 'Type and Email are required', 400);
@@ -20,7 +20,8 @@ router.post('/submit', async (req, res) => {
             email,
             phone,
             message,
-            datasetDetails
+            datasetDetails,
+            source
         });
 
         await newSubmission.save();
