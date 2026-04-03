@@ -19,10 +19,15 @@ const proxyGet = async (req, res) => {
         res.json(response.data);
     } catch (error) {
         console.error('[Proxy] Error:', error.message);
+        if (error.response) {
+            console.error('[Proxy] Error Data:', JSON.stringify(error.response.data));
+            console.error('[Proxy] Target URL:', `${DATA_API_URL}${req.originalUrl}`);
+        }
         res.status(error.response?.status || 502).json({
             success: false,
             message: 'Failed to fetch data from data server',
-            error: error.message
+            error: error.message,
+            details: error.response?.data
         });
     }
 };
@@ -38,10 +43,15 @@ const proxyPost = async (req, res) => {
         res.json(response.data);
     } catch (error) {
         console.error('[Proxy] Error:', error.message);
+        if (error.response) {
+            console.error('[Proxy] Error Data:', JSON.stringify(error.response.data));
+            console.error('[Proxy] Target URL:', `${DATA_API_URL}${req.originalUrl}`);
+        }
         res.status(error.response?.status || 502).json({
             success: false,
             message: 'Failed to update data on data server',
-            error: error.message
+            error: error.message,
+            details: error.response?.data
         });
     }
 };
