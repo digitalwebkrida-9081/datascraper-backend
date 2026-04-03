@@ -9,7 +9,8 @@ const DATA_API_URL = process.env.DATA_API_URL || 'http://51.210.109.205:7070';
 // Proxy GET requests to the Rocky VPS Data API
 const proxyGet = async (req, res) => {
     try {
-        const targetUrl = `${DATA_API_URL}${req.originalUrl}`;
+        const baseURL = DATA_API_URL.replace(/\/$/, '');
+        const targetUrl = `${baseURL}${req.originalUrl}`;
         console.log(`[Proxy] GET → ${targetUrl}`);
         
         // Stats/browse/categories-count endpoints scan files, need more time
@@ -29,7 +30,8 @@ const proxyGet = async (req, res) => {
 // Proxy POST requests to the Rocky VPS Data API
 const proxyPost = async (req, res) => {
     try {
-        const targetUrl = `${DATA_API_URL}${req.originalUrl}`;
+        const baseURL = DATA_API_URL.replace(/\/$/, '');
+        const targetUrl = `${baseURL}${req.originalUrl}`;
         console.log(`[Proxy] POST → ${targetUrl}`);
         
         const response = await axios.post(targetUrl, req.body, { timeout: 30000 });
