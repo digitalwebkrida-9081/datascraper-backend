@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const axios = require('axios');
+const authMiddleware = require('../middleware/auth');
 
 // Rocky VPS Data API URL (internal, HTTP is fine server-to-server)
 const DATA_API_URL = process.env.DATA_API_URL || 'http://51.210.109.205:7070';
@@ -53,7 +54,7 @@ router.get('/browse', proxyGet);
 router.get('/preview', proxyGet);
 
 // POST routes
-router.post('/update-price', proxyPost);
-router.post('/bulk-update-price', proxyPost);
+router.post('/update-price', authMiddleware, proxyPost);
+router.post('/bulk-update-price', authMiddleware, proxyPost);
 
 module.exports = router;

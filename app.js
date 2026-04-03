@@ -76,7 +76,7 @@ connectDB()
             console.log('No users found. Seeding default admin user...');
             const defaultAdmin = new User({
                 username: 'admin',
-                password: process.env.NEXT_PUBLIC_ADMIN_PASSWORD || 'Dhavan@2911',
+                password: process.env.NEXT_PUBLIC_ADMIN_PASSWORD,
                 role: 'admin'
             });
             await defaultAdmin.save();
@@ -88,10 +88,10 @@ connectDB()
             console.log('No blog admins found. Seeding default blog admin...');
             const defaultBlogAdmin = new BlogAdmin({
                 username: 'blogadmin',
-                password: 'password123'
+                password: process.env.NEXT_PUBLIC_BLOG_ADMIN_PASSWORD
             });
             await defaultBlogAdmin.save();
-            console.log('Default blog admin created successfully. Credentials: blogadmin / password123');
+            console.log('Default blog admin created successfully.');
         }
     } catch (err) {
       console.error("Error checking/seeding users:", err);

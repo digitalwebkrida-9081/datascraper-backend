@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const FormSubmission = require('../models/FormSubmission');
 const { successResponse, errorResponse } = require('../common/helper/responseHelper');
+const authMiddleware = require('../middleware/auth');
 
 // @route   POST /api/forms/submit
 // @desc    Submit form data
@@ -36,7 +37,7 @@ router.post('/submit', async (req, res) => {
 // @route   GET /api/forms/all
 // @desc    Get all form submissions (Admin)
 // @access  Public (Should be protected in production)
-router.get('/all', async (req, res) => {
+router.get('/all', authMiddleware, async (req, res) => {
     try {
         const submissions = await FormSubmission.find().sort({ createdAt: -1 });
         return successResponse(res, submissions, 'Submissions retrieved successfully');
@@ -49,7 +50,7 @@ router.get('/all', async (req, res) => {
 // @route   GET /api/forms/unread-count
 // @desc    Get count of unread forms
 // @access  Public (Should be protected)
-router.get('/unread-count', async (req, res) => {
+router.get('/unread-count', authMiddleware, async (req, res) => {
     try {
         const count = await FormSubmission.countDocuments({ isRead: false });
         return successResponse(res, { count }, 'Unread count retrieved');
@@ -62,7 +63,7 @@ router.get('/unread-count', async (req, res) => {
 // @route   DELETE /api/forms/:id
 // @desc    Delete a form submission
 // @access  Public (Should be protected)
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', authMiddleware, async (req, res) => {
     try {
         const submission = await FormSubmission.findById(req.params.id);
 
@@ -82,7 +83,7 @@ router.delete('/:id', async (req, res) => {
 // @route   PUT /api/forms/:id/status
 // @desc    Update a lead's status
 // @access  Public (Should be protected)
-router.put('/:id/status', async (req, res) => {
+router.put('/:id/status', authMiddleware, async (req, res) => {
     try {
         const { status } = req.body;
         const validStatuses = ['new', 'contacted', 'converted', 'closed'];
@@ -111,7 +112,7 @@ router.put('/:id/status', async (req, res) => {
 // @route   PUT /api/forms/:id/note
 // @desc    Update a lead's note
 // @access  Public (Should be protected)
-router.put('/:id/note', async (req, res) => {
+router.put('/:id/note', authMiddleware, async (req, res) => {
     try {
         const { note } = req.body;
         
@@ -135,7 +136,7 @@ router.put('/:id/note', async (req, res) => {
 // @route   POST /api/forms/bulk-delete
 // @desc    Delete multiple form submissions
 // @access  Public (Should be protected)
-router.post('/bulk-delete', async (req, res) => {
+router.post('/bulk-delete', authMiddleware, async (req, res) => {
     try {
         const { ids } = req.body;
         

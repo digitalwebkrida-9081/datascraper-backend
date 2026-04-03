@@ -2,7 +2,11 @@ const mongoose = require('mongoose');
 
 const connectDB = async () => {
     try {
-        const mongoURI = "mongodb://admin:Qwerty%23786@15.235.224.91:27017/datascrapper?authSource=admin";
+        const mongoURI = process.env.MONGO_URI;
+        if (!mongoURI) {
+            console.error('MONGO_URI is not defined in environment variables.');
+            process.exit(1);
+        }
         await mongoose.connect(mongoURI);
         console.log('MongoDB Connected Successfully');
     } catch (err) {
