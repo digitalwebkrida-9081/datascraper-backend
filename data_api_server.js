@@ -91,11 +91,18 @@ function getCountryName(code) {
 function quickLineCount(filePath) {
     return new Promise((resolve, reject) => {
         let lineCount = 0;
+        let isFirstChunk = true;
         fs.createReadStream(filePath)
             .on('data', (buffer) => {
                 let idx = -1;
-                lineCount--;
-                do { idx = buffer.indexOf(10, idx + 1); lineCount++; } while (idx !== -1);
+                // Only subtract for the header row once in the first chunk
+                if (isFirstChunk) {
+                    lineCount--;
+                    isFirstChunk = false;
+                }
+                while ((idx = buffer.indexOf(10, idx + 1)) !== -1) {
+                    lineCount++;
+                }
             })
             .on('end', () => resolve(Math.max(0, lineCount)))
             .on('error', (err) => reject(err));
@@ -283,9 +290,8 @@ function countFilteredRowsFast(filePath, lowerState, lowerCity) {
 }
 
 // ==========================================
-// PRICING HELPER
+// PRICING HELPERS
 // ==========================================
-// Load pricing from the central _pricing.json file in the MERGED_DATA_BASE
 const PRICING_CACHE_FILE = path.join(MERGED_DATA_BASE, '_pricing.json');
 
 function loadPricing() {
@@ -309,16 +315,45 @@ function savePricing(data) {
     }
 }
 
-// Generate a unique key for an item's price
-function getPriceKey(country, state = '', city = '', category = '') {
+// ==========================================
+// RECORDS HELPERS (Manual Overrides)
+// ==========================================
+const RECORDS_CACHE_FILE = path.join(MERGED_DATA_BASE, '_records.json');
+
+function loadRecords() {
+    try {
+        if (fs.existsSync(RECORDS_CACHE_FILE)) {
+            return JSON.parse(fs.readFileSync(RECORDS_CACHE_FILE, 'utf8'));
+        }
+    } catch (e) {
+        console.error('Error loading records cache:', e);
+    }
+    return {};
+}
+
+function saveRecords(data) {
+    try {
+        fs.writeFileSync(RECORDS_CACHE_FILE, JSON.stringify(data, null, 2), 'utf8');
+        return true;
+    } catch (e) {
+        console.error('Error saving records cache:', e);
+        return false;
+    }
+}
+
+// Generate a unique key for pricing/records (REUSED FOR BOTH)
+function getCacheKey(country, state = '', city = '', category = '') {
     const resolvedCountry = country ? getCountryName(country).toUpperCase() : '';
     return [
         resolvedCountry,
         state?.toLowerCase().trim() || '',
         city?.toLowerCase().trim() || '',
         category?.toLowerCase().trim() || ''
-    ].join('_||_'); // Using a clear separator
+    ].join('_||_');
 }
+
+// BACKWARD COMPATIBILITY
+const getPriceKey = getCacheKey;
 
 // ==========================================
 // API ENDPOINTS
@@ -409,7 +444,7 @@ app.get('/api/merged/categories', async (req, res) => {
         
         // ===== CACHING: compute once, serve instantly =====
         const cacheDir = fs.existsSync(mergedDir) ? mergedDir : sampleDir;
-        const cacheFile = path.join(cacheDir, `_categories_cache.json`);
+        const cacheFile = path.join(cacheDir, `_categories_cache_v2.json`);
         let categories = null;
         
         // Check if cache exists and is still valid (same number of CSV files combined)
@@ -418,13 +453,21 @@ app.get('/api/merged/categories', async (req, res) => {
                 const cached = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
                 if (cached.fileCount === totalFiles) {
                     const pricing = loadPricing();
+                    const manualRecords = loadRecords();
                     categories = cached.categories.map(cat => {
-                        const pKey = getPriceKey(country, '', '', cat.name);
+                        const pKey = getCacheKey(country, '', '', cat.name);
                         const priceData = pricing[pKey] || {};
+                        const recordOverride = manualRecords[pKey];
+                        
                         return {
                             ...cat,
+                            records: recordOverride ? (parseInt(recordOverride.total) || cat.records) : cat.records,
+                            emails: recordOverride ? (parseInt(recordOverride.emails) || 0) : undefined,
+                            phones: recordOverride ? (parseInt(recordOverride.phones) || 0) : undefined,
+                            websites: recordOverride ? (parseInt(recordOverride.websites) || 0) : undefined,
                             price: priceData.price || cat.price,
-                            previousPrice: priceData.previousPrice || cat.previousPrice
+                            previousPrice: priceData.previousPrice || cat.previousPrice,
+                            hasManualRecords: !!recordOverride
                         };
                     });
                     console.log(`[Cache HIT] ${country} — ${categories.length} categories`);
@@ -438,86 +481,69 @@ app.get('/api/merged/categories', async (req, res) => {
             const startTime = Date.now();
             const categoriesMap = new Map();
 
-            // Process Sample First
-            for (const file of csvFilesSample) {
-                const categoryName = file.replace('.csv', '');
-                const filePath = path.join(sampleDir, file);
-                const stat = fs.statSync(filePath);
+            const pricingCache = loadPricing();
 
-                const [recordCount, hasFields] = await Promise.all([
-                    quickLineCount(filePath),
-                    readCsvHeaders(filePath)
-                ]);
+            const processBatch = async (files, dir, isSample) => {
+                const BATCH_SIZE = 100;
+                for (let i = 0; i < files.length; i += BATCH_SIZE) {
+                    const batch = files.slice(i, i + BATCH_SIZE);
+                    await Promise.all(batch.map(async (file) => {
+                        const categoryName = file.replace('.csv', '');
+                        const filePath = path.join(dir, file);
+                        const stat = fs.statSync(filePath);
 
-                // Inflate fake records for realism
-                let hash = 0;
-                for (let i = 0; i < categoryName.length; i++) { hash = ((hash << 5) - hash) + categoryName.charCodeAt(i); hash |= 0; }
-                const fakeRecords = 12500 + (Math.abs(hash) % 25000);
+                        const [recordCount, hasFields] = await Promise.all([
+                            quickLineCount(filePath),
+                            readCsvHeaders(filePath)
+                        ]);
 
-                const pricing = loadPricing();
-                const pKey = getPriceKey(country, '', '', categoryName);
-                const priceData = pricing[pKey] || {};
+                        const pKey = getCacheKey(country, '', '', categoryName);
+                        const priceData = pricingCache[pKey] || {};
+                        const recordOverride = loadRecords()[pKey];
 
-                categoriesMap.set(categoryName, {
-                    name: categoryName,
-                    displayName: formatCategoryName(categoryName),
-                    fileName: file,
-                    records: fakeRecords, // Inflated!
-                    hasEmail: !!hasFields.email,
-                    hasPhone: !!hasFields.phone,
-                    hasWebsite: !!hasFields.website,
-                    hasLinkedin: !!hasFields.linkedin,
-                    hasFacebook: !!hasFields.facebook,
-                    hasInstagram: !!hasFields.instagram,
-                    hasTwitter: !!hasFields.twitter,
-                    hasTiktok: !!hasFields.tiktok,
-                    hasYoutube: !!hasFields.youtube,
-                    fileSize: stat.size * 100, // Inflated size
-                    fileSizeFormatted: formatFileSize(stat.size * 100), // Inflated size formatted
-                    lastModified: stat.mtime,
-                    price: priceData.price || null,
-                    previousPrice: priceData.previousPrice || null,
-                    isSample: true
-                });
-            }
+                        let finalRecordCount = recordCount;
+                        let finalFileSize = stat.size;
 
-            // Real Merged Takes Precedence
-            for (const file of csvFilesMerged) {
-                const categoryName = file.replace('.csv', '');
-                const filePath = path.join(mergedDir, file);
-                const stat = fs.statSync(filePath);
+                        if (isSample) {
+                             let hash = 0;
+                             for (let j = 0; j < categoryName.length; j++) { hash = ((hash << 5) - hash) + categoryName.charCodeAt(j); hash |= 0; }
+                             finalRecordCount = 12500 + (Math.abs(hash) % 25000);
+                             finalFileSize = stat.size * 100;
+                        }
 
-                const [recordCount, hasFields] = await Promise.all([
-                    quickLineCount(filePath),
-                    readCsvHeaders(filePath)
-                ]);
+                        categoriesMap.set(categoryName, {
+                            name: categoryName,
+                            displayName: formatCategoryName(categoryName),
+                            fileName: file,
+                            records: finalRecordCount,
+                            hasEmail: !!hasFields.email,
+                            hasPhone: !!hasFields.phone,
+                            hasWebsite: !!hasFields.website,
+                            hasLinkedin: !!hasFields.linkedin,
+                            hasFacebook: !!hasFields.facebook,
+                            hasInstagram: !!hasFields.instagram,
+                            hasTwitter: !!hasFields.twitter,
+                            hasTiktok: !!hasFields.tiktok,
+                            hasYoutube: !!hasFields.youtube,
+                            fileSize: finalFileSize,
+                            fileSizeFormatted: formatFileSize(finalFileSize),
+                            lastModified: stat.mtime,
+                            price: priceData.price || null,
+                            previousPrice: priceData.previousPrice || null,
+                            isSample: isSample,
+                            records: recordOverride ? (parseInt(recordOverride.total) || finalRecordCount) : finalRecordCount,
+                            emails: recordOverride ? (parseInt(recordOverride.emails) || 0) : undefined,
+                            phones: recordOverride ? (parseInt(recordOverride.phones) || 0) : undefined,
+                            websites: recordOverride ? (parseInt(recordOverride.websites) || 0) : undefined,
+                            hasManualRecords: !!recordOverride
+                        });
+                    }));
+                }
+            };
 
-                const pricing = loadPricing();
-                const pKey = getPriceKey(country, '', '', categoryName);
-                const priceData = pricing[pKey] || {};
-
-                categoriesMap.set(categoryName, {
-                    name: categoryName,
-                    displayName: formatCategoryName(categoryName),
-                    fileName: file,
-                    records: recordCount, // Real record count
-                    hasEmail: !!hasFields.email,
-                    hasPhone: !!hasFields.phone,
-                    hasWebsite: !!hasFields.website,
-                    hasLinkedin: !!hasFields.linkedin,
-                    hasFacebook: !!hasFields.facebook,
-                    hasInstagram: !!hasFields.instagram,
-                    hasTwitter: !!hasFields.twitter,
-                    hasTiktok: !!hasFields.tiktok,
-                    hasYoutube: !!hasFields.youtube,
-                    fileSize: stat.size,
-                    fileSizeFormatted: formatFileSize(stat.size),
-                    lastModified: stat.mtime,
-                    price: priceData.price || null,
-                    previousPrice: priceData.previousPrice || null,
-                    isSample: false
-                });
-            }
+            // Process Sample First, then Real Merged (real takes precedence and overwrites if same key exists)
+            await processBatch(csvFilesSample, sampleDir, true);
+            await processBatch(csvFilesMerged, mergedDir, false);
 
             categories = Array.from(categoriesMap.values());
             categories.sort((a, b) => a.displayName.localeCompare(b.displayName));
@@ -729,10 +755,22 @@ app.get('/api/merged/categories-count', async (req, res) => {
                 const diskCacheData = JSON.parse(fs.readFileSync(cacheFilePath, 'utf8'));
                 
                 // Handle Pagination on Disk Cache
+                const manualRecords = loadRecords();
                 const totalCategories = diskCacheData.categories.length;
                 const totalPages = Math.ceil(totalCategories / limitNum);
                 const skip = (pageNum - 1) * limitNum;
-                const paginatedCategories = diskCacheData.categories.slice(skip, skip + limitNum);
+                const paginatedCategories = diskCacheData.categories.slice(skip, skip + limitNum).map(cat => {
+                    const rKey = getCacheKey(country, state, city, cat.name);
+                    const recordOverride = manualRecords[rKey];
+                    return {
+                        ...cat,
+                        records: recordOverride ? (parseInt(recordOverride.total) || cat.records) : cat.records,
+                        emails: recordOverride ? (parseInt(recordOverride.emails) || 0) : undefined,
+                        phones: recordOverride ? (parseInt(recordOverride.phones) || 0) : undefined,
+                        websites: recordOverride ? (parseInt(recordOverride.websites) || 0) : undefined,
+                        hasManualRecords: !!recordOverride
+                    };
+                });
 
                 const responseData = {
                     ...diskCacheData,
@@ -792,13 +830,19 @@ app.get('/api/merged/categories-count', async (req, res) => {
                 const categoryName = file.replace('.csv', '');
                 const filePath = path.join(targetDir, file);
                 const countResult = await countFilteredRowsFast(filePath, lowerState, lowerCity);
+                const rKey = getCacheKey(country, state, city, categoryName);
+                const recordOverride = loadRecords()[rKey];
                 return {
                     name: categoryName,
                     displayName: formatCategoryName(categoryName),
-                    records: countResult.total,
+                    records: recordOverride ? (parseInt(recordOverride.total) || countResult.total) : countResult.total,
+                    emails: recordOverride ? (parseInt(recordOverride.emails) || 0) : undefined,
+                    phones: recordOverride ? (parseInt(recordOverride.phones) || 0) : undefined,
+                    websites: recordOverride ? (parseInt(recordOverride.websites) || 0) : undefined,
                     hasEmail: countResult.hasEmail,
                     hasPhone: countResult.hasPhone,
-                    hasWebsite: countResult.hasWebsite
+                    hasWebsite: countResult.hasWebsite,
+                    hasManualRecords: !!recordOverride
                 };
             }));
             categories.push(...results);
@@ -884,9 +928,20 @@ app.get('/api/merged/browse', async (req, res) => {
                 if (fs.existsSync(cacheFile)) {
                     try {
                         const cached = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
+                        const manualRecords = loadRecords();
                         categoriesList = cached.categories.map(cat => {
-                            const pKey = getPriceKey(country, '', '', cat.name);
-                            return { ...cat, price: pricing[pKey]?.price || null, previousPrice: pricing[pKey]?.previousPrice || null };
+                            const pKey = getCacheKey(country, '', '', cat.name);
+                            const recordOverride = manualRecords[pKey];
+                            return { 
+                                ...cat, 
+                                records: recordOverride ? (parseInt(recordOverride.total) || cat.records) : cat.records,
+                                emails: recordOverride ? (parseInt(recordOverride.emails) || 0) : undefined,
+                                phones: recordOverride ? (parseInt(recordOverride.phones) || 0) : undefined,
+                                websites: recordOverride ? (parseInt(recordOverride.websites) || 0) : undefined,
+                                price: pricing[pKey]?.price || null, 
+                                previousPrice: pricing[pKey]?.previousPrice || null,
+                                hasManualRecords: !!recordOverride
+                            };
                         });
                         summary.totalRecords = categoriesList.reduce((acc, c) => acc + (c.records || 0), 0);
                         summary.totalEmails = categoriesList.reduce((acc, c) => acc + (c.hasEmail ? c.records : 0), 0);
@@ -907,9 +962,20 @@ app.get('/api/merged/browse', async (req, res) => {
                 const cacheFilePath = path.join(mergedDir, '.cache', cacheFileName);
                 if (fs.existsSync(cacheFilePath)) {
                     const diskCacheData = JSON.parse(fs.readFileSync(cacheFilePath, 'utf8'));
+                    const manualRecords = loadRecords();
                     categoriesList = diskCacheData.categories.map(cat => {
-                        const pKey = getPriceKey(country, state, city, cat.name);
-                        return { ...cat, price: pricing[pKey]?.price || null, previousPrice: pricing[pKey]?.previousPrice || null };
+                        const pKey = getCacheKey(country, state, city, cat.name);
+                        const recordOverride = manualRecords[pKey];
+                        return { 
+                            ...cat, 
+                            records: recordOverride ? (parseInt(recordOverride.total) || cat.records) : cat.records,
+                            emails: recordOverride ? (parseInt(recordOverride.emails) || 0) : (cat.emails || 0),
+                            phones: recordOverride ? (parseInt(recordOverride.phones) || 0) : (cat.phones || 0),
+                            websites: recordOverride ? (parseInt(recordOverride.websites) || 0) : (cat.websites || 0),
+                            price: pricing[pKey]?.price || null, 
+                            previousPrice: pricing[pKey]?.previousPrice || null,
+                            hasManualRecords: !!recordOverride
+                        };
                     });
                     summary = {
                         totalRecords: categoriesList.reduce((acc, c) => acc + (c.records || 0), 0),
@@ -1017,6 +1083,60 @@ app.post('/api/merged/bulk-update-price', async (req, res) => {
             res.json({ success: true, message: `Successfully updated ${updateCount} categories` });
         } else {
             res.status(500).json({ success: false, message: 'Failed to write pricing data' });
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// POST /api/merged/update-records
+app.post('/api/merged/update-records', async (req, res) => {
+    try {
+        const { country, state = '', city = '', category, records } = req.body;
+        if (!country || !category || !records) {
+            return res.status(400).json({ success: false, message: 'Country, category and records object are required' });
+        }
+
+        const allRecords = loadRecords();
+        const rKey = getCacheKey(country, state, city, category);
+        
+        allRecords[rKey] = {
+            ...records,
+            updatedAt: new Date().toISOString()
+        };
+
+        if (saveRecords(allRecords)) {
+            res.json({ success: true, message: 'Records updated successfully' });
+        } else {
+            res.status(500).json({ success: false, message: 'Failed to write records data' });
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// POST /api/merged/delete-records
+app.post('/api/merged/delete-records', async (req, res) => {
+    try {
+        const { country, state = '', city = '', category } = req.body;
+        if (!country || !category) {
+            return res.status(400).json({ success: false, message: 'Country and category are required' });
+        }
+
+        const allRecords = loadRecords();
+        const rKey = getCacheKey(country, state, city, category);
+        
+        if (allRecords[rKey]) {
+            delete allRecords[rKey];
+            if (saveRecords(allRecords)) {
+                res.json({ success: true, message: 'Manual override removed successfully' });
+            } else {
+                res.status(500).json({ success: false, message: 'Failed to update records data' });
+            }
+        } else {
+            res.json({ success: true, message: 'No manual override found to remove' });
         }
     } catch (error) {
         console.error('Error:', error);

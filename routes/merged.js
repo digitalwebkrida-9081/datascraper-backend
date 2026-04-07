@@ -68,5 +68,7 @@ router.get('/preview', proxyGet);
 // POST routes
 router.post('/update-price', authMiddleware, proxyPost);
 router.post('/bulk-update-price', authMiddleware, proxyPost);
+router.post('/update-records', authMiddleware, proxyPost);
+router.post('/delete-records', authMiddleware, proxyPost);
 
 module.exports = router;
