@@ -153,24 +153,79 @@ const SAMPLE_MASK_MESSAGE = "Included in purchased data";
  * Building trust: Only keep records with high-quality filled content.
  */
 function processSampleRow(row) {
-    // 1. Quality Filter: Name is mandatory, plus at least one of (Phone or Website)
-    const hasName = !!(row.name || row.Name || row.business_name);
-    const hasPhone = !!(row.phone || row.Phone || row.phone_number || row.contact_number);
-    const hasWebsite = !!(row.website || row.Website || row.url);
-    
-    // We want high quality for samples to build trust
-    if (!hasName || (!hasPhone && !hasWebsite)) return null;
+    const isPlaceholder = (val) => {
+        if (!val) return true;
+        const lower = val.toString().toLowerCase().trim();
+        return (
+            lower === '' ||
+            lower === '--' ||
+            lower === 'n/a' ||
+            lower === 'null' ||
+            lower === 'available in full list' ||
+            lower === 'available in full list (verified)' ||
+            lower.includes('available in full list')
+        );
+    };
 
-    // 2. Identify email columns and mask them
-    const emailKeys = Object.keys(row).filter(key => key.toLowerCase().includes('email'));
-    const maskedRow = { ...row };
-    emailKeys.forEach(key => {
-        if (maskedRow[key]) {
-            maskedRow[key] = SAMPLE_MASK_MESSAGE;
+    // 1. Quality Filter: Name is mandatory
+    const name = row.name || row.Name || row.business_name || '';
+    if (isPlaceholder(name)) return null;
+
+    // 2. Identify critical fields and check for real content
+    const phone = row.phone || row.Phone || row.phone_number || row.contact_number || '';
+    const website = row.website || row.Website || row.url || '';
+    const address = row.address || row.Address || row.full_address || '';
+
+    const realPhone = !isPlaceholder(phone);
+    const realWebsite = !isPlaceholder(website);
+    const realAddress = !isPlaceholder(address);
+
+    // To build trust, we REQUIRE at least one real piece of contact info (Phone or Website)
+    // AND a real address if possible. 
+    if (!realPhone && !realWebsite) return null;
+
+    // 3. Process the Row
+    const processed = { ...row };
+
+    // Clean up all columns: If it's a placeholder, make it empty so it looks cleaner
+    Object.keys(processed).forEach(key => {
+        if (isPlaceholder(processed[key])) {
+            processed[key] = ''; 
         }
     });
 
-    return maskedRow;
+    // 4. Mask Email
+    const emailKeys = Object.keys(processed).filter(key => key.toLowerCase().includes('email'));
+    emailKeys.forEach(key => {
+        // Only mask if there was actually something resembling an email or a positive field
+        if (processed[key] || row[key]?.toString().toLowerCase().includes('available')) {
+            processed[key] = SAMPLE_MASK_MESSAGE;
+        }
+    });
+
+    // 5. Auto-Fill City/State from Address if they are empty
+    if (realAddress && (!processed.city || !processed.state)) {
+        const parts = address.split(',').map(p => p.trim());
+        if (parts.length >= 3) {
+            // Usually: [Name/Street], City, State Zip, Country
+            // Or: [Street], City, State, Country
+            // We'll take the 3rd from last as City and 2nd from last as State
+            const detectedCity = parts[parts.length - 3];
+            const statePart = parts[parts.length - 2]; 
+            
+            if (!processed.city) processed.city = detectedCity;
+            if (!processed.state) {
+                // Split "NY 10001" to get "NY"
+                processed.state = statePart.split(' ')[0];
+            }
+        }
+    }
+
+    // Ensure first letters are capitalized for City/State if we filled them
+    if (processed.city) processed.city = processed.city.replace(/\b\w/g, l => l.toUpperCase());
+    if (processed.state) processed.state = processed.state.toUpperCase();
+
+    return processed;
 }
 
 // Read CSV with pagination and optional search
@@ -692,12 +747,35 @@ app.get('/api/merged/preview', async (req, res) => {
         const countryName = getCountryName(country);
         const sampleDir = path.join(SAMPLE_DATA_BASE, countryName);
         
-        let filePath = path.join(mergedDir, `${category}.csv`);
+        // Prioritize Real Data - Try variations to find the file
+        const variations = [
+            category,
+            category.replace(/\s+/g, '_'),
+            category.replace(/\s+/g, '-'),
+            category.toLowerCase().replace(/\s+/g, '_'),
+            category.toLowerCase().replace(/\s+/g, '-')
+        ];
+
+        let filePath = null;
         let isSample = false;
 
-        if (!fs.existsSync(filePath)) {
-            filePath = path.join(sampleDir, `${category}.csv`);
-            isSample = true;
+        for (const v of variations) {
+            const checkPath = path.join(mergedDir, `${v}.csv`);
+            if (fs.existsSync(checkPath)) {
+                filePath = checkPath;
+                break;
+            }
+        }
+
+        if (!filePath) {
+            for (const v of variations) {
+                const checkPath = path.join(sampleDir, `${v}.csv`);
+                if (fs.existsSync(checkPath)) {
+                    filePath = checkPath;
+                    isSample = true;
+                    break;
+                }
+            }
         }
 
         if (!fs.existsSync(filePath)) {
@@ -759,10 +837,35 @@ app.get('/api/merged/download-sample', async (req, res) => {
         const countryName = getCountryName(country);
         const sampleDir = path.join(SAMPLE_DATA_BASE, countryName);
         
-        // Prioritize Real Data
-        let filePath = path.join(mergedDir, `${category}.csv`);
-        if (!fs.existsSync(filePath)) {
-            filePath = path.join(sampleDir, `${category}.csv`);
+        // Prioritize Real Data - Try variations to find the file
+        const variations = [
+            category,
+            category.replace(/\s+/g, '_'),
+            category.replace(/\s+/g, '-'),
+            category.toLowerCase().replace(/\s+/g, '_'),
+            category.toLowerCase().replace(/\s+/g, '-')
+        ];
+
+        let filePath = null;
+        let isSample = false;
+
+        for (const v of variations) {
+            const checkPath = path.join(mergedDir, `${v}.csv`);
+            if (fs.existsSync(checkPath)) {
+                filePath = checkPath;
+                break;
+            }
+        }
+
+        if (!filePath) {
+            for (const v of variations) {
+                const checkPath = path.join(sampleDir, `${v}.csv`);
+                if (fs.existsSync(checkPath)) {
+                    filePath = checkPath;
+                    isSample = true;
+                    break;
+                }
+            }
         }
 
         if (!fs.existsSync(filePath)) {

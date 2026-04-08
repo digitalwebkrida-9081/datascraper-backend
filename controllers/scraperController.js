@@ -1349,21 +1349,51 @@ exports.getDatasetDetail = async (req, res) => {
         const totalCount = businesses.length;
         
         // High Quality Sample List: Mask Emails and Filter for phone/website to build trust
+        const isPlaceholder = (val) => {
+            if (!val) return true;
+            const lower = val.toString().toLowerCase().trim();
+            return (
+                lower === '' ||
+                lower === '--' ||
+                lower === 'n/a' ||
+                lower === 'null' ||
+                lower === 'available in full list' ||
+                lower === 'available in full list (verified)' ||
+                lower.includes('available in full list')
+            );
+        };
+
         const sampleList = businesses
-            .filter(b => !!(b.name) && (!!(b.phone_number || b.phone) || !!(b.website)))
+            .filter(b => !!(b.name) && !isPlaceholder(b.name) && (!isPlaceholder(b.phone_number || b.phone) || !isPlaceholder(b.website)))
             .slice(0, 20)
-            .map(b => ({
-                name: b.name,
-                address: b.full_address,
-                city: b.full_address ? b.full_address.split(',').slice(-3, -2)[0]?.trim() || 'N/A' : 'N/A',
-                state: b.full_address ? b.full_address.split(',').slice(-2, -1)[0]?.trim() || 'N/A' : 'N/A',
-                country: b.full_address ? b.full_address.split(',').pop().trim() : 'N/A', 
-                email: (b.email || b.email_address || b.contact_email) ? "Included in purchased data" : null, 
-                website: b.website || null,
-                phone: b.phone_number || null,
-                rating: b.rating,
-                reviews: b.review_count
-            }));
+            .map(b => {
+                const address = b.full_address || '';
+                const realAddress = !isPlaceholder(address);
+                
+                let city = b.city || '';
+                let state = b.state || '';
+
+                if (realAddress && (isPlaceholder(city) || isPlaceholder(state))) {
+                    const parts = address.split(',').map(p => p.trim());
+                    if (parts.length >= 3) {
+                        if (isPlaceholder(city)) city = parts[parts.length - 3];
+                        if (isPlaceholder(state)) state = parts[parts.length - 2].split(' ')[0];
+                    }
+                }
+
+                return {
+                    name: b.name,
+                    address: realAddress ? address : '',
+                    city: city.replace(/\b\w/g, l => l.toUpperCase()),
+                    state: state.toUpperCase(),
+                    country: b.full_address ? b.full_address.split(',').pop().trim() : 'N/A', 
+                    email: (b.email || b.email_address || b.contact_email) ? "Included in purchased data" : null, 
+                    website: isPlaceholder(b.website) ? null : b.website,
+                    phone: isPlaceholder(b.phone_number || b.phone) ? null : (b.phone_number || b.phone),
+                    rating: b.rating,
+                    reviews: b.review_count
+                };
+            });
         
         const dataset = {
             id: id,
