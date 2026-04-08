@@ -1347,18 +1347,23 @@ exports.getDatasetDetail = async (req, res) => {
 
         // Construct Dataset Object
         const totalCount = businesses.length;
-        const sampleList = businesses.slice(0, 20).map(b => ({
-            name: b.name,
-            address: b.full_address,
-            city: b.full_address ? b.full_address.split(',').slice(-3, -2)[0]?.trim() || 'N/A' : 'N/A',
-            state: b.full_address ? b.full_address.split(',').slice(-2, -1)[0]?.trim() || 'N/A' : 'N/A',
-            country: b.full_address ? b.full_address.split(',').pop().trim() : 'N/A', 
-            email: null, 
-            website: b.website || null,
-            phone: b.phone_number || null,
-            rating: b.rating,
-            reviews: b.review_count
-        }));
+        
+        // High Quality Sample List: Mask Emails and Filter for phone/website to build trust
+        const sampleList = businesses
+            .filter(b => !!(b.name) && (!!(b.phone_number || b.phone) || !!(b.website)))
+            .slice(0, 20)
+            .map(b => ({
+                name: b.name,
+                address: b.full_address,
+                city: b.full_address ? b.full_address.split(',').slice(-3, -2)[0]?.trim() || 'N/A' : 'N/A',
+                state: b.full_address ? b.full_address.split(',').slice(-2, -1)[0]?.trim() || 'N/A' : 'N/A',
+                country: b.full_address ? b.full_address.split(',').pop().trim() : 'N/A', 
+                email: (b.email || b.email_address || b.contact_email) ? "Included in purchased data" : null, 
+                website: b.website || null,
+                phone: b.phone_number || null,
+                rating: b.rating,
+                reviews: b.review_count
+            }));
         
         const dataset = {
             id: id,

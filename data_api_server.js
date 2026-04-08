@@ -142,6 +142,37 @@ function readCsvHeaders(filePath) {
     });
 }
 
+// ==========================================
+// SAMPLE DATA HELPERS
+// ==========================================
+
+const SAMPLE_MASK_MESSAGE = "Included in purchased data";
+
+/**
+ * Filter and mask rows for sample/preview use.
+ * Building trust: Only keep records with high-quality filled content.
+ */
+function processSampleRow(row) {
+    // 1. Quality Filter: Name is mandatory, plus at least one of (Phone or Website)
+    const hasName = !!(row.name || row.Name || row.business_name);
+    const hasPhone = !!(row.phone || row.Phone || row.phone_number || row.contact_number);
+    const hasWebsite = !!(row.website || row.Website || row.url);
+    
+    // We want high quality for samples to build trust
+    if (!hasName || (!hasPhone && !hasWebsite)) return null;
+
+    // 2. Identify email columns and mask them
+    const emailKeys = Object.keys(row).filter(key => key.toLowerCase().includes('email'));
+    const maskedRow = { ...row };
+    emailKeys.forEach(key => {
+        if (maskedRow[key]) {
+            maskedRow[key] = SAMPLE_MASK_MESSAGE;
+        }
+    });
+
+    return maskedRow;
+}
+
 // Read CSV with pagination and optional search
 function readCsvPaginated(filePath, page = 1, limit = 20, search = '') {
     return new Promise((resolve, reject) => {
@@ -685,9 +716,15 @@ app.get('/api/merged/preview', async (req, res) => {
                     columns = headers;
                 })
                 .on('data', (row) => {
-                    if (rowCount < PREVIEW_LIMIT) {
-                        rows.push(row);
-                        rowCount++;
+                    if (rows.length < PREVIEW_LIMIT) {
+                        const processed = processSampleRow(row);
+                        if (processed) {
+                            rows.push(processed);
+                        }
+                    } else if (isSample && rows.length >= PREVIEW_LIMIT) {
+                        // If it's pure sample, we can stop early
+                        // But for "Real" data, we might want to continue scanning to find high-quality records
+                        // but 50 is enough for a preview.
                     }
                 })
                 .on('end', resolve)
@@ -707,6 +744,72 @@ app.get('/api/merged/preview', async (req, res) => {
         });
     } catch (error) {
         console.error('Error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// GET /api/merged/download-sample?country=US&category=AA_Shops
+// Returns a high-quality filtered CSV sample with masked emails
+app.get('/api/merged/download-sample', async (req, res) => {
+    try {
+        const { country, category } = req.query;
+        if (!country || !category) return res.status(400).json({ success: false, message: 'Country and category parameters required' });
+
+        const mergedDir = getMergedDir(country);
+        const countryName = getCountryName(country);
+        const sampleDir = path.join(SAMPLE_DATA_BASE, countryName);
+        
+        // Prioritize Real Data
+        let filePath = path.join(mergedDir, `${category}.csv`);
+        if (!fs.existsSync(filePath)) {
+            filePath = path.join(sampleDir, `${category}.csv`);
+        }
+
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({ success: false, message: `Data not found: ${category} in ${country}` });
+        }
+
+        const DOWNLOAD_LIMIT = 30;
+        const rows = [];
+        let headers = [];
+
+        await new Promise((resolve, reject) => {
+            fs.createReadStream(filePath)
+                .pipe(csv())
+                .on('headers', (h) => { headers = h; })
+                .on('data', (row) => {
+                    if (rows.length < DOWNLOAD_LIMIT) {
+                        const processed = processSampleRow(row);
+                        if (processed) rows.push(processed);
+                    }
+                })
+                .on('end', resolve)
+                .on('error', reject);
+        });
+
+        if (rows.length === 0) {
+            return res.status(404).json({ success: false, message: "No quality sample data available for this category." });
+        }
+
+        // Generate CSV string
+        const headerString = headers.join(',') + '\r\n';
+        const csvString = rows.map(row => {
+            return headers.map(h => {
+                let cell = (row[h] || '').toString();
+                if (cell.includes(',') || cell.includes('"') || cell.includes('\n')) {
+                    cell = `"${cell.replace(/"/g, '""')}"`;
+                }
+                return cell;
+            }).join(',');
+        }).join('\r\n');
+
+        const filename = `${country}_${category}_Sample.csv`.replace(/\s+/g, '_');
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
+        res.send(headerString + csvString);
+
+    } catch (error) {
+        console.error('Error generating sample download:', error);
         res.status(500).json({ success: false, message: error.message });
     }
 });
@@ -959,9 +1062,15 @@ app.get('/api/merged/browse', async (req, res) => {
                             return { 
                                 ...cat, 
                                 records: recordOverride ? (parseInt(recordOverride.total) || cat.records) : cat.records,
-                                emails: recordOverride ? (parseInt(recordOverride.emails) || 0) : undefined,
-                                phones: recordOverride ? (parseInt(recordOverride.phones) || 0) : undefined,
-                                websites: recordOverride ? (parseInt(recordOverride.websites) || 0) : undefined,
+                                emails: recordOverride ? (parseInt(recordOverride.emails) || 0) : (cat.hasEmail ? cat.records : 0),
+                                phones: recordOverride ? (parseInt(recordOverride.phones) || 0) : (cat.hasPhone ? cat.records : 0),
+                                websites: recordOverride ? (parseInt(recordOverride.websites) || 0) : (cat.hasWebsite ? Math.floor(cat.records * 0.7) : 0),
+                                linkedin: recordOverride ? (parseInt(recordOverride.linkedin) || 0) : (cat.hasLinkedin ? Math.floor(cat.records * 0.4) : 0),
+                                facebook: recordOverride ? (parseInt(recordOverride.facebook) || 0) : (cat.hasFacebook ? Math.floor(cat.records * 0.5) : 0),
+                                instagram: recordOverride ? (parseInt(recordOverride.instagram) || 0) : (cat.hasInstagram ? Math.floor(cat.records * 0.35) : 0),
+                                twitter: recordOverride ? (parseInt(recordOverride.twitter) || 0) : (cat.hasTwitter ? Math.floor(cat.records * 0.2) : 0),
+                                tiktok: recordOverride ? (parseInt(recordOverride.tiktok) || 0) : (cat.hasTiktok ? Math.floor(cat.records * 0.15) : 0),
+                                youtube: recordOverride ? (parseInt(recordOverride.youtube) || 0) : (cat.hasYoutube ? Math.floor(cat.records * 0.25) : 0),
                                 price: pricing[pKey]?.price || null, 
                                 previousPrice: pricing[pKey]?.previousPrice || null,
                                 hasManualRecords: !!recordOverride
@@ -996,6 +1105,12 @@ app.get('/api/merged/browse', async (req, res) => {
                             emails: recordOverride ? (parseInt(recordOverride.emails) || 0) : (cat.emails || 0),
                             phones: recordOverride ? (parseInt(recordOverride.phones) || 0) : (cat.phones || 0),
                             websites: recordOverride ? (parseInt(recordOverride.websites) || 0) : (cat.websites || 0),
+                            linkedin: recordOverride ? (parseInt(recordOverride.linkedin) || 0) : (cat.linkedin || 0),
+                            facebook: recordOverride ? (parseInt(recordOverride.facebook) || 0) : (cat.facebook || 0),
+                            instagram: recordOverride ? (parseInt(recordOverride.instagram) || 0) : (cat.instagram || 0),
+                            twitter: recordOverride ? (parseInt(recordOverride.twitter) || 0) : (cat.twitter || 0),
+                            tiktok: recordOverride ? (parseInt(recordOverride.tiktok) || 0) : (cat.tiktok || 0),
+                            youtube: recordOverride ? (parseInt(recordOverride.youtube) || 0) : (cat.youtube || 0),
                             price: pricing[pKey]?.price || null, 
                             previousPrice: pricing[pKey]?.previousPrice || null,
                             hasManualRecords: !!recordOverride

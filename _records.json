@@ -1,0 +1,28 @@
+{
+  "UNITED KINGDOM_||__||__||_restaurants": {
+    "category": "restaurants",
+    "total": "50000",
+    "emails": "10000",
+    "phones": "40000",
+    "websites": "35000",
+    "linkedin": "2000",
+    "facebook": "25000",
+    "instagram": "20000",
+    "twitter": "10000",
+    "tiktok": "2000",
+    "youtube": "4000"
+  },
+  "UNITED KINGDOM_||__||__||_health_resorts": {
+    "category": "health_resorts",
+    "total": "120",
+    "emails": "50",
+    "phones": "100",
+    "websites": "90",
+    "linkedin": "15",
+    "facebook": "50",
+    "instagram": "45",
+    "twitter": "20",
+    "tiktok": "5",
+    "youtube": "20"
+  }
+}
