@@ -56,6 +56,50 @@ const proxyPost = async (req, res) => {
     }
 };
 
+// Proxy file download (streams binary response for CSV downloads)
+const proxyDownload = async (req, res) => {
+    try {
+        const baseURL = DATA_API_URL.replace(/\/$/, '');
+        const targetUrl = `${baseURL}${req.originalUrl}`;
+        console.log(`[Proxy] DOWNLOAD → ${targetUrl}`);
+        
+        const response = await axios.get(targetUrl, {
+            timeout: 60000,
+            responseType: 'stream'
+        });
+        
+        // Forward all headers from the data API (Content-Type, Content-Disposition, etc.)
+        if (response.headers['content-type']) res.setHeader('Content-Type', response.headers['content-type']);
+        if (response.headers['content-disposition']) res.setHeader('Content-Disposition', response.headers['content-disposition']);
+        if (response.headers['content-length']) res.setHeader('Content-Length', response.headers['content-length']);
+        
+        // Pipe the file stream directly to the client
+        response.data.pipe(res);
+    } catch (error) {
+        console.error('[Proxy] Download Error:', error.message);
+        // If it's a JSON error response from the data API, forward it
+        if (error.response?.headers?.['content-type']?.includes('application/json')) {
+            try {
+                let errorData = '';
+                error.response.data.on('data', chunk => errorData += chunk);
+                error.response.data.on('end', () => {
+                    try {
+                        res.status(error.response.status).json(JSON.parse(errorData));
+                    } catch {
+                        res.status(error.response.status).json({ success: false, message: 'Download failed' });
+                    }
+                });
+                return;
+            } catch {}
+        }
+        res.status(error.response?.status || 502).json({
+            success: false,
+            message: 'Failed to download sample from data server',
+            error: error.message
+        });
+    }
+};
+
 // GET routes
 router.get('/countries', proxyGet);
 router.get('/categories', proxyGet);
@@ -64,6 +108,7 @@ router.get('/data', proxyGet);
 router.get('/stats', proxyGet);
 router.get('/browse', proxyGet);
 router.get('/preview', proxyGet);
+router.get('/download-sample', proxyDownload);
 
 // POST routes
 router.post('/update-price', authMiddleware, proxyPost);

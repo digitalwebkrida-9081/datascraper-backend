@@ -3,9 +3,38 @@ const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const csv = require('csv-parser');
+const mongoose = require('mongoose');
+require('dotenv').config();
+
+// ==========================================
+// EMBEDDED MODELS (Stand-alone version)
+// ==========================================
+// This allows the API to run without the external /models folder
+const GoogleBusinessSchema = new mongoose.Schema({
+  query: String,
+  name: String,
+  full_address: String,
+  phone_number: String,
+  website: String,
+  rating: Number,
+  review_count: Number,
+  type: String,
+  createdAt: { type: Date, default: Date.now }
+});
+const GoogleBusiness = mongoose.models.GoogleBusiness || mongoose.model('GoogleBusiness', GoogleBusinessSchema);
+
+// DB Connection
+const MONGO_URI = process.env.MONGO_URI;
+if (MONGO_URI) {
+    if (mongoose.connection.readyState === 0) {
+        mongoose.connect(MONGO_URI)
+            .then(() => console.log('MongoDB Connected successfully (Standalone Mode)'))
+            .catch(err => console.error('MongoDB Connection Error:', err));
+    }
+}
 
 const app = express();
-const PORT = 7070;
+const PORT = process.env.DATA_API_PORT || 7070;
 
 // ==========================================
 // CONFIGURATION
@@ -17,7 +46,10 @@ const SAMPLE_DATA_BASE = (() => {
     const candidates = [
         path.join(__dirname, '..', 'sample_data'),
         path.join(__dirname, 'sample_data'),
-        path.join(__dirname, '..', 'sample_processed_data')
+        path.join(__dirname, '..', 'sample_processed_data'),
+        path.join(__dirname, '..', 'downloaded_samples'),
+        path.join(__dirname, 'downloaded_samples'),
+        path.join('/home/scrappingscript/scrappingscript/sample_data')
     ];
     for (const p of candidates) {
         if (fs.existsSync(p) && fs.statSync(p).isDirectory()) return p;
@@ -25,10 +57,22 @@ const SAMPLE_DATA_BASE = (() => {
     return path.join(__dirname, '..', 'sample_data');
 })();
 
+console.log('==========================================');
+console.log(`[STARTUP] MERGED_DATA_BASE: ${MERGED_DATA_BASE}`);
+console.log(`[STARTUP] SAMPLE_DATA_BASE: ${SAMPLE_DATA_BASE}`);
+console.log('==========================================');
+
 // ==========================================
 // MIDDLEWARE
 // ==========================================
-app.use(cors({ origin: '*', methods: ['GET'] }));
+app.use(cors());
+app.use(express.json({ limit: '50mb' }));
+
+// GLOBAL DEBUG LOGGER: Prints every request reaching the server
+app.use((req, res, next) => {
+    console.log(`[REQUEST] ${req.method} ${req.originalUrl}`);
+    next();
+});
 app.use(express.json());
 
 // ==========================================
@@ -38,9 +82,24 @@ app.use(express.json());
 function getMergedDir(countryCode) {
     if (!countryCode) return '';
     const lower = countryCode.toLowerCase();
+    
+    // Explicit mappings for common names
     if (lower === 'germany' || lower === 'de') return path.join(MERGED_DATA_BASE, 'Germany_Merged');
     if (lower === 'france' || lower === 'fr') return path.join(MERGED_DATA_BASE, 'France_Merged');
-    if (lower === 'uk' || lower === 'gb') return path.join(MERGED_DATA_BASE, 'UK_Merged');
+    if (lower === 'uk' || lower === 'gb' || lower === 'united kingdom') return path.join(MERGED_DATA_BASE, 'UK_Merged');
+    
+    // Try variations: US_Merged, United States_Merged, etc.
+    const variations = [
+        `${countryCode.toUpperCase()}_Merged`,
+        `${getCountryName(countryCode).toUpperCase()}_Merged`,
+        `${getCountryName(countryCode).replace(/\b\w/g, l => l.toUpperCase())}_Merged`
+    ];
+
+    for (const v of variations) {
+        const fullPath = path.join(MERGED_DATA_BASE, v);
+        if (fs.existsSync(fullPath)) return fullPath;
+    }
+
     return path.join(MERGED_DATA_BASE, `${countryCode.toUpperCase()}_Merged`);
 }
 
@@ -74,8 +133,14 @@ function getCountryName(code) {
         'FR': 'France', 'JP': 'Japan', 'BR': 'Brazil', 'MX': 'Mexico',
         'AT': 'Austria', 'GERMANY': 'Germany', 'FRANCE': 'France'
     };
-    if (countries[code.toUpperCase()]) return countries[code.toUpperCase()];
+    const upCode = code.toUpperCase();
+    if (countries[upCode]) return countries[upCode];
     
+    // Fuzzy match for cut-off names (e.g. "Thailan" matches "Thailand")
+    for (const [cCode, name] of Object.entries(countries)) {
+        if (name.toUpperCase().startsWith(upCode)) return name;
+    }
+
     try {
         if (fs.existsSync(SAMPLE_DATA_BASE)) {
             const items = fs.readdirSync(SAMPLE_DATA_BASE, { withFileTypes: true });
@@ -152,7 +217,7 @@ const SAMPLE_MASK_MESSAGE = "Included in purchased data";
  * Filter and mask rows for sample/preview use.
  * Building trust: Only keep records with high-quality filled content.
  */
-function processSampleRow(row) {
+function processSampleRow(row, strict = true) {
     const isPlaceholder = (val) => {
         if (!val) return true;
         const lower = val.toString().toLowerCase().trim();
@@ -161,14 +226,16 @@ function processSampleRow(row) {
             lower === '--' ||
             lower === 'n/a' ||
             lower === 'null' ||
-            lower === 'available in full list' ||
-            lower === 'available in full list (verified)' ||
-            lower.includes('available in full list')
+            lower === 'unknown' ||
+            lower.includes('available in full list') ||
+            lower.includes('available in purchased data') ||
+            (lower.includes('available') && lower.includes('list')) ||
+            (lower.includes('available') && lower.includes('verified'))
         );
     };
 
     // 1. Quality Filter: Name is mandatory
-    const name = row.name || row.Name || row.business_name || '';
+    const name = row.name || row.Name || row.Business_Name || row.business_name || '';
     if (isPlaceholder(name)) return null;
 
     // 2. Identify critical fields and check for real content
@@ -180,9 +247,8 @@ function processSampleRow(row) {
     const realWebsite = !isPlaceholder(website);
     const realAddress = !isPlaceholder(address);
 
-    // To build trust, we REQUIRE at least one real piece of contact info (Phone or Website)
-    // AND a real address if possible. 
-    if (!realPhone && !realWebsite) return null;
+    // To build trust, we REQUIRE at least one real piece of contact info (Phone or Website) in STRICT mode
+    if (strict && !realPhone && !realWebsite) return null;
 
     // 3. Process the Row
     const processed = { ...row };
@@ -193,6 +259,12 @@ function processSampleRow(row) {
             processed[key] = ''; 
         }
     });
+
+    // Support standard headers if they differ in the source
+    if (!processed.Name) processed.Name = name;
+    if (!processed.Address) processed.Address = address;
+    if (!processed.Phone) processed.Phone = phone;
+    if (!processed.Website) processed.Website = website;
 
     // 4. Mask Email
     const emailKeys = Object.keys(processed).filter(key => key.toLowerCase().includes('email'));
@@ -207,15 +279,11 @@ function processSampleRow(row) {
     if (realAddress && (!processed.city || !processed.state)) {
         const parts = address.split(',').map(p => p.trim());
         if (parts.length >= 3) {
-            // Usually: [Name/Street], City, State Zip, Country
-            // Or: [Street], City, State, Country
-            // We'll take the 3rd from last as City and 2nd from last as State
             const detectedCity = parts[parts.length - 3];
             const statePart = parts[parts.length - 2]; 
             
             if (!processed.city) processed.city = detectedCity;
             if (!processed.state) {
-                // Split "NY 10001" to get "NY"
                 processed.state = statePart.split(' ')[0];
             }
         }
@@ -226,6 +294,84 @@ function processSampleRow(row) {
     if (processed.state) processed.state = processed.state.toUpperCase();
 
     return processed;
+}
+
+/**
+ * Normalizes category names to detect singular/plural duplicates
+ */
+function normalizeCategoryKey(name) {
+    if (!name) return '';
+    // 1. Lowercase and replace spaces/dashes/underscores with empty
+    let n = name.toLowerCase().replace(/[_\s-]/g, '').trim();
+    // 2. Simple singularization: remove 's' only if it follow certain rules
+    // (Don't remove from 'chess', 'glass', etc. but remove from 'hospitals', 'schools')
+    if (n.endsWith('s') && !n.endsWith('ss') && n.length > 3) {
+        n = n.slice(0, -1);
+    }
+    return n;
+}
+
+/**
+ * Fetch real records from the MongoDB database to provide high-quality samples.
+ * Building trust: This ensures "Address" and "Phone" are actual real data.
+ */
+async function fetchRealRecordsFromDB(country, category, limit = 50) {
+    if (!mongoose.connection.readyState) return [];
+    
+    try {
+        const countryName = getCountryName(country); // "United States"
+        const categoryName = formatCategoryName(category); // "Hospitals"
+        const categoryWord = categoryName.split(' ')[0]; // Take "Hospital" from "Hospitals"
+
+        // Brushing logic: "Hospitals" -> /Hospital/
+        const fuzzyCategory = categoryWord.replace(/s$/, ''); // Remove 's' from end (Hospitals -> Hospital)
+        
+        // Broader search: Search for query containing the category word AND country anywhere
+        const queryRegex = new RegExp(`${fuzzyCategory}`, 'i');
+        const countryRegex = new RegExp(`${countryName}`, 'i');
+        
+        console.log(`[DB] Fetching real records for: ${fuzzyCategory} in ${countryName}`);
+
+        const records = await GoogleBusiness.find({
+            $and: [
+                { $or: [ { query: queryRegex }, { type: queryRegex }, { name: queryRegex } ] },
+                { $or: [ { query: countryRegex }, { full_address: countryRegex } ] }
+            ]
+        }).limit(limit).lean(); 
+
+        if (records.length === 0) {
+            console.log(`[DB] No country-specific records for ${fuzzyCategory}. Trying broad category.`);
+             return await GoogleBusiness.find({
+                $or: [ { query: queryRegex }, { type: queryRegex }, { name: queryRegex } ]
+            }).limit(limit).lean();
+        }
+
+        return records;
+    } catch (err) {
+        console.error('[DB] Error fetching real records:', err);
+        return [];
+    }
+}
+
+/**
+ * Map MongoDB GoogleBusiness record to the standard sample set
+ */
+function mapDbRecordToSample(record) {
+    const row = {
+        "Business Name": record.name,
+        "Name": record.name,
+        "Address": record.full_address,
+        "City": "",
+        "State": "",
+        "Country": "",
+        "Phone": record.phone_number || "",
+        "Email": record.email || "",
+        "Website": record.website || "",
+        "Rating": record.rating || "N/A",
+        "Reviews": record.review_count || 0
+    };
+    
+    return processSampleRow(row);
 }
 
 // Read CSV with pagination and optional search
@@ -530,7 +676,7 @@ app.get('/api/merged/categories', async (req, res) => {
         
         // ===== CACHING: compute once, serve instantly =====
         const cacheDir = fs.existsSync(mergedDir) ? mergedDir : sampleDir;
-        const cacheFile = path.join(cacheDir, `_categories_cache_v2.json`);
+        const cacheFile = path.join(cacheDir, `_categories_cache_v3.json`);
         let categories = null;
         
         // Check if cache exists and is still valid (same number of CSV files combined)
@@ -569,28 +715,57 @@ app.get('/api/merged/categories', async (req, res) => {
         
         // Cache miss — compute and save
         if (!categories) {
-            console.log(`[Cache MISS] ${country} — computing ${totalFiles} categories...`);
+            console.log(`[Cache MISS] ${country} — computing categories...`);
             const startTime = Date.now();
             const categoriesMap = new Map();
-
             const pricingCache = loadPricing();
 
-            const processBatch = async (files, dir, isSample) => {
-                const BATCH_SIZE = 100;
-                for (let i = 0; i < files.length; i += BATCH_SIZE) {
-                    const batch = files.slice(i, i + BATCH_SIZE);
-                    await Promise.all(batch.map(async (file) => {
-                        const categoryName = file.replace('.csv', '');
-                        const filePath = path.join(dir, file);
-                        const stat = fs.statSync(filePath);
+            // 1. Collect all potential files
+            const tasks = [];
+            const seenNormKeys = new Map(); // normKey -> index in tasks
 
+            const collectTasks = (files, dir, isSample) => {
+                files.forEach(file => {
+                    const categoryName = file.replace('.csv', '');
+                    const normKey = normalizeCategoryKey(categoryName);
+                    const task = { file, dir, isSample, categoryName, normKey };
+
+                    if (seenNormKeys.has(normKey)) {
+                        const existingIdx = seenNormKeys.get(normKey);
+                        const existingTask = tasks[existingIdx];
+                        // If current is Real and existing is Sample, replace
+                        if (!isSample && existingTask.isSample) {
+                            tasks[existingIdx] = task;
+                        }
+                        // Otherwise (both same or existing is real), stick with existing
+                    } else {
+                        seenNormKeys.set(normKey, tasks.length);
+                        tasks.push(task);
+                    }
+                });
+            };
+
+            collectTasks(csvFilesSample, sampleDir, true);
+            collectTasks(csvFilesMerged, mergedDir, false);
+
+            console.log(`[Categories] Deduplicated ${totalFiles} files down to ${tasks.length} unique categories.`);
+
+            // 2. Process tasks in batches
+            const BATCH_SIZE = 100;
+            for (let i = 0; i < tasks.length; i += BATCH_SIZE) {
+                const batch = tasks.slice(i, i + BATCH_SIZE);
+                await Promise.all(batch.map(async (task) => {
+                    const { file, dir, isSample, categoryName } = task;
+                    const filePath = path.join(dir, file);
+                    
+                    try {
+                        const stat = fs.statSync(filePath);
                         const [recordCount, hasFields] = await Promise.all([
                             quickLineCount(filePath),
                             readCsvHeaders(filePath)
                         ]);
 
                         const pKey = getCacheKey(country, '', '', categoryName);
-                        const priceData = pricingCache[pKey] || {};
                         const recordOverride = loadRecords()[pKey];
 
                         let finalRecordCount = recordCount;
@@ -620,8 +795,8 @@ app.get('/api/merged/categories', async (req, res) => {
                             fileSize: finalFileSize,
                             fileSizeFormatted: formatFileSize(finalFileSize),
                             lastModified: stat.mtime,
-                            price: priceData.price || null,
-                            previousPrice: priceData.previousPrice || null,
+                            price: pricingCache[pKey]?.price || null,
+                            previousPrice: pricingCache[pKey]?.previousPrice || null,
                             isSample: isSample,
                             records: recordOverride ? (parseInt(recordOverride.total) || finalRecordCount) : finalRecordCount,
                             emails: recordOverride ? (parseInt(recordOverride.emails) || 0) : (!!hasFields.email ? finalRecordCount : 0),
@@ -635,13 +810,11 @@ app.get('/api/merged/categories', async (req, res) => {
                             youtube: recordOverride ? (parseInt(recordOverride.youtube) || 0) : (!!hasFields.youtube ? Math.floor(finalRecordCount * 0.25) : 0),
                             hasManualRecords: !!recordOverride
                         });
-                    }));
-                }
-            };
-
-            // Process Sample First, then Real Merged (real takes precedence and overwrites if same key exists)
-            await processBatch(csvFilesSample, sampleDir, true);
-            await processBatch(csvFilesMerged, mergedDir, false);
+                    } catch (err) {
+                        console.error(`Error processing ${file}:`, err.message);
+                    }
+                }));
+            }
 
             categories = Array.from(categoriesMap.values());
             categories.sort((a, b) => a.displayName.localeCompare(b.displayName));
@@ -650,7 +823,9 @@ app.get('/api/merged/categories', async (req, res) => {
             try {
                 fs.writeFileSync(cacheFile, JSON.stringify({ fileCount: totalFiles, categories }, null, 0));
                 console.log(`[Cache SAVED] ${country} — ${categories.length} categories in ${((Date.now() - startTime) / 1000).toFixed(1)}s`);
-            } catch (e) { console.error('Cache save error:', e.message); }
+            } catch (e) {
+                console.error('Cache save error:', e.message);
+            }
         }
 
         // ===== PAGINATION =====
@@ -694,15 +869,64 @@ app.get('/api/merged/data', async (req, res) => {
         const countryName = getCountryName(country);
         const sampleDir = path.join(SAMPLE_DATA_BASE, countryName);
         
-        let filePath = path.join(mergedDir, `${category}.csv`);
+        // 1. SMART SEARCH for Manual Sample (Prioritize)
+        const targetBase = category.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        let filePath = null;
         let isSample = false;
 
-        if (!fs.existsSync(filePath)) {
-            filePath = path.join(sampleDir, `${category}.csv`);
-            isSample = true;
+        console.log(`[Data-Debug] New request: Category="${category}", Country="${country}"`);
+        console.log(`[Data-Debug] Looking for manual sample in: ${sampleDir}`);
+
+        if (fs.existsSync(sampleDir)) {
+            try {
+                const filesInDir = fs.readdirSync(sampleDir);
+                const match = filesInDir.find(f => f.replace('.csv', '').replace(/[^a-z0-9]/gi, '_').toLowerCase() === targetBase);
+                if (match) {
+                    filePath = path.join(sampleDir, match);
+                    isSample = false; // FLAG: Set to false so frontend doesn't apply masking to these premium manual files
+                    console.log(`[Data-Debug] SUCCESS: Manual sample found at ${filePath}. Serving as unmasked.`);
+                } else {
+                    console.log(`[Data-Debug] No file match found in manual sample folder.`);
+                }
+            } catch (err) {
+                console.log(`[Data-Debug] ERROR reading manual directory: ${err.message}`);
+                console.log(`[Data-Debug] TIP: You might need to run: sudo chown -R rocky:rocky ${SAMPLE_DATA_BASE}`);
+            }
+        } else {
+            console.log(`[Data-Debug] MANUAL FOLDER DOES NOT EXIST: ${sampleDir}`);
         }
 
-        if (!fs.existsSync(filePath)) return res.status(404).json({ success: false, message: `Data not found: ${category} in ${country}` });
+        // 2. Fallback to Merged Data
+        if (!filePath) {
+            const mergedPath = path.join(mergedDir, `${category}.csv`);
+            const lowerMergedPath = path.join(mergedDir, `${category.toLowerCase().replace(/\s+/g, '_')}.csv`);
+            
+            console.log(`[Data-Debug] Falling back to Merged lookup...`);
+            if (fs.existsSync(mergedPath)) {
+                filePath = mergedPath;
+                isSample = false;
+                console.log(`[Data-Debug] Using MERGED file (REAL): ${filePath}`);
+            } else if (fs.existsSync(lowerMergedPath)) {
+                filePath = lowerMergedPath;
+                isSample = false;
+                console.log(`[Data-Debug] Using LOWERCASE MERGED file (REAL): ${filePath}`);
+            }
+        }
+
+        if (!filePath) {
+            // Check sampleDir for a legacy match if it wasn't caught by smart match yet
+            const legacyPath = path.join(sampleDir, `${category}.csv`);
+            if (fs.existsSync(legacyPath)) {
+                filePath = legacyPath;
+                isSample = false; // Force unmask
+                console.log(`[Data-Debug] Using LEGACY manual file: ${filePath}`);
+            }
+        }
+
+        if (!filePath) {
+            console.log(`[Data-Debug] FAILURE: No file found anywhere for ${category}`);
+            return res.status(404).json({ success: false, message: `Data not found: ${category} in ${country}` });
+        }
 
         const result = await readCsvFilteredPaginated(filePath, parseInt(page), parseInt(limit), search, state, city);
 
@@ -739,79 +963,95 @@ app.get('/api/merged/data', async (req, res) => {
 app.get('/api/merged/preview', async (req, res) => {
     try {
         const { country, category } = req.query;
-        if (!country || !category) {
-            return res.status(400).json({ success: false, message: 'Country and category parameters required' });
-        }
+        if (!country || !category) return res.status(400).json({ success: false, message: 'Country and category parameters required' });
+
+        const rows = [];
+        let columns = ["Name", "Address", "City", "State", "Country", "Phone", "Email", "Website", "Rating", "Reviews"];
+        const PREVIEW_LIMIT = 50;
+        let isSample = false;
 
         const mergedDir = getMergedDir(country);
         const countryName = getCountryName(country);
         const sampleDir = path.join(SAMPLE_DATA_BASE, countryName);
+
+        // 1. SMART SEARCH for Manual Sample (Unmasked)
+        const targetBase = category.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        let manualFilePath = null;
         
-        // Prioritize Real Data - Try variations to find the file
-        const variations = [
-            category,
-            category.replace(/\s+/g, '_'),
-            category.replace(/\s+/g, '-'),
-            category.toLowerCase().replace(/\s+/g, '_'),
-            category.toLowerCase().replace(/\s+/g, '-')
-        ];
+        console.log(`[Preview] Searching for: "${category}" (target: ${targetBase})`);
+        console.log(`[Preview] Checking folder: ${sampleDir}`);
 
-        let filePath = null;
-        let isSample = false;
-
-        for (const v of variations) {
-            const checkPath = path.join(mergedDir, `${v}.csv`);
-            if (fs.existsSync(checkPath)) {
-                filePath = checkPath;
-                break;
+        if (fs.existsSync(sampleDir)) {
+            const filesInDir = fs.readdirSync(sampleDir);
+            console.log(`[Preview] Files found: ${filesInDir.slice(0, 5).join(', ')}${filesInDir.length > 5 ? '...' : ''}`);
+            const match = filesInDir.find(f => f.replace('.csv', '').replace(/[^a-z0-9]/gi, '_').toLowerCase() === targetBase);
+            if (match) {
+                manualFilePath = path.join(sampleDir, match);
+                console.log(`[Preview] MATCH FOUND: ${match}`);
+            } else {
+                console.log(`[Preview] No match in manual folder.`);
             }
+        } else {
+            console.log(`[Preview] sampleDir does NOT exist: ${sampleDir}`);
         }
 
-        if (!filePath) {
-            for (const v of variations) {
-                const checkPath = path.join(sampleDir, `${v}.csv`);
-                if (fs.existsSync(checkPath)) {
-                    filePath = checkPath;
+        if (manualFilePath) {
+            console.log(`[Preview] Serving RAW manual sample: ${manualFilePath}`);
+            await new Promise((resolve, reject) => {
+                const stream = fs.createReadStream(manualFilePath);
+                let lineCount = 0;
+                stream.pipe(csv())
+                    .on('headers', (h) => { columns = h; })
+                    .on('data', (row) => {
+                        lineCount++;
+                        rows.push(row); // NO MASKING for manual files
+                        if (rows.length >= PREVIEW_LIMIT) { stream.destroy(); resolve(); }
+                    })
+                    .on('end', resolve)
+                    .on('error', reject);
+            });
+            isSample = true;
+        } else {
+            // 2. Try DB records (Real Data)
+            const dbRecords = await fetchRealRecordsFromDB(country, category, PREVIEW_LIMIT);
+            if (dbRecords && dbRecords.length > 5) {
+                dbRecords.forEach(rec => {
+                    const mapped = mapDbRecordToSample(rec);
+                    if (mapped && rows.length < PREVIEW_LIMIT) rows.push(mapped);
+                });
+                isSample = false;
+            }
+
+            // 3. Fallback to Automatic Sample (Masked)
+            if (rows.length < 5) {
+                let filePath = null;
+                const variations = [category, category.replace(/\s+/g, '_'), category.toLowerCase().replace(/\s+/g, '_')];
+                for (const v of variations) {
+                    const checkPath = path.join(mergedDir, `${v}.csv`);
+                    if (fs.existsSync(checkPath)) { filePath = checkPath; break; }
+                }
+
+                if (filePath && fs.existsSync(filePath)) {
+                    await new Promise((resolve, reject) => {
+                        const stream = fs.createReadStream(filePath);
+                        stream.pipe(csv())
+                            .on('headers', (h) => { columns = h; })
+                            .on('data', (row) => {
+                                const masked = processSampleRow(row, true);
+                                if (masked) rows.push(masked);
+                                if (rows.length >= PREVIEW_LIMIT) { stream.destroy(); resolve(); }
+                            })
+                            .on('end', resolve)
+                            .on('error', reject);
+                    });
                     isSample = true;
-                    break;
                 }
             }
         }
 
-        if (!fs.existsSync(filePath)) {
-            return res.status(404).json({ success: false, message: `Data not found: ${category} in ${country}` });
-        }
-
-        const rows = [];
-        let columns = [];
-        let rowCount = 0;
-        const PREVIEW_LIMIT = 50;
-
-        await new Promise((resolve, reject) => {
-            fs.createReadStream(filePath)
-                .pipe(csv())
-                .on('headers', (headers) => {
-                    columns = headers;
-                })
-                .on('data', (row) => {
-                    if (rows.length < PREVIEW_LIMIT) {
-                        const processed = processSampleRow(row);
-                        if (processed) {
-                            rows.push(processed);
-                        }
-                    } else if (isSample && rows.length >= PREVIEW_LIMIT) {
-                        // If it's pure sample, we can stop early
-                        // But for "Real" data, we might want to continue scanning to find high-quality records
-                        // but 50 is enough for a preview.
-                    }
-                })
-                .on('end', resolve)
-                .on('error', reject);
-        });
-
         res.json({
             success: true,
-            message: 'Preview data fetched',
+            message: rows.length > 0 ? 'Preview data fetched' : 'No data found',
             data: {
                 country: getCountryName(country) === 'United States' ? country.toUpperCase() : getCountryName(country),
                 category: formatCategoryName(category),
@@ -821,84 +1061,115 @@ app.get('/api/merged/preview', async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Error:', error);
+        console.error('Error generating preview:', error);
         res.status(500).json({ success: false, message: error.message });
     }
 });
 
 // GET /api/merged/download-sample?country=US&category=AA_Shops
-// Returns a high-quality filtered CSV sample with masked emails
+// Returns a sample. Manual samples are served as-is, automatic samples are masked.
 app.get('/api/merged/download-sample', async (req, res) => {
     try {
         const { country, category } = req.query;
         if (!country || !category) return res.status(400).json({ success: false, message: 'Country and category parameters required' });
 
+        const DOWNLOAD_LIMIT = 50; 
+        const rows = [];
+        let headers = ["Name", "Address", "City", "State", "Country", "Phone", "Email", "Website", "Rating", "Reviews"];
+
         const mergedDir = getMergedDir(country);
         const countryName = getCountryName(country);
         const sampleDir = path.join(SAMPLE_DATA_BASE, countryName);
         
-        // Prioritize Real Data - Try variations to find the file
+        // PRIORITIZE MANUAL SAMPLES: Find the file regardless of capitalization/spacing
+        const targetBase = category.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        let manualFilePath = null;
+        
+        console.log(`[Download] Searching for: "${category}" (target: ${targetBase})`);
+        console.log(`[Download] Checking folder: ${sampleDir}`);
+
+        if (fs.existsSync(sampleDir)) {
+            const filesInDir = fs.readdirSync(sampleDir);
+            console.log(`[Download] Files found in folder: ${filesInDir.slice(0, 5).join(', ')}${filesInDir.length > 5 ? '...' : ''}`);
+            const match = filesInDir.find(f => {
+                const base = f.replace('.csv', '').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+                return base === targetBase;
+            });
+            if (match) {
+                manualFilePath = path.join(sampleDir, match);
+                console.log(`[Download] MATCH FOUND: ${match}`);
+            } else {
+                console.log(`[Download] NO MATCH in manual samples.`);
+            }
+        } else {
+            console.log(`[Download] sampleDir does NOT exist.`);
+        }
+
+        if (manualFilePath) {
+            console.log(`[Download] Serving RAW manual sample: ${manualFilePath}`);
+            const filename = `${country}_${category}_Sample.csv`.replace(/\s+/g, '_');
+            return res.download(manualFilePath, filename);
+        }
+
+        // AUTO-SAMPLE logic (Database then Merged files) with masking
+        console.log(`[Download] Generating masked sample for ${category}...`);
+        
+        // Build name variations for merged file lookup
         const variations = [
             category,
             category.replace(/\s+/g, '_'),
-            category.replace(/\s+/g, '-'),
+            category.replace(/_/g, ' '),
             category.toLowerCase().replace(/\s+/g, '_'),
-            category.toLowerCase().replace(/\s+/g, '-')
+            category.toLowerCase(),
+            category.charAt(0).toUpperCase() + category.slice(1).toLowerCase().replace(/\s+/g, '_')
         ];
 
-        let filePath = null;
-        let isSample = false;
-
-        for (const v of variations) {
-            const checkPath = path.join(mergedDir, `${v}.csv`);
-            if (fs.existsSync(checkPath)) {
-                filePath = checkPath;
-                break;
-            }
+        const dbRecords = await fetchRealRecordsFromDB(country, category, DOWNLOAD_LIMIT);
+        if (dbRecords && dbRecords.length > 10) {
+            dbRecords.forEach(rec => {
+                const mapped = mapDbRecordToSample(rec);
+                if (mapped && rows.length < DOWNLOAD_LIMIT) rows.push(mapped);
+            });
         }
-
-        if (!filePath) {
+             
+        if (rows.length < 5) {
+            let mergedFilePath = null;
             for (const v of variations) {
-                const checkPath = path.join(sampleDir, `${v}.csv`);
-                if (fs.existsSync(checkPath)) {
-                    filePath = checkPath;
-                    isSample = true;
-                    break;
-                }
+                const checkPath = path.join(mergedDir, `${v}.csv`);
+                if (fs.existsSync(checkPath)) { mergedFilePath = checkPath; break; }
+            }
+
+            if (mergedFilePath && fs.existsSync(mergedFilePath)) {
+                await new Promise((resolve, reject) => {
+                    const stream = fs.createReadStream(mergedFilePath);
+                    let lineCount = 0;
+                    const parser = stream.pipe(csv());
+
+                    parser.on('headers', (h) => { headers = h; })
+                        .on('data', (row) => {
+                            lineCount++;
+                            const highQuality = processSampleRow(row, true); 
+                            if (highQuality) rows.push(highQuality);
+                            if (rows.length >= DOWNLOAD_LIMIT || lineCount > 5000) {
+                                stream.destroy();
+                                resolve();
+                            }
+                        })
+                        .on('end', resolve)
+                        .on('error', reject);
+                });
             }
         }
-
-        if (!fs.existsSync(filePath)) {
-            return res.status(404).json({ success: false, message: `Data not found: ${category} in ${country}` });
-        }
-
-        const DOWNLOAD_LIMIT = 30;
-        const rows = [];
-        let headers = [];
-
-        await new Promise((resolve, reject) => {
-            fs.createReadStream(filePath)
-                .pipe(csv())
-                .on('headers', (h) => { headers = h; })
-                .on('data', (row) => {
-                    if (rows.length < DOWNLOAD_LIMIT) {
-                        const processed = processSampleRow(row);
-                        if (processed) rows.push(processed);
-                    }
-                })
-                .on('end', resolve)
-                .on('error', reject);
-        });
 
         if (rows.length === 0) {
-            return res.status(404).json({ success: false, message: "No quality sample data available for this category." });
+             return res.status(404).json({ success: false, message: "No sample data available for this category." });
         }
 
-        // Generate CSV string
+        // Generate CSV string for masked sample
         const headerString = headers.join(',') + '\r\n';
         const csvString = rows.map(row => {
             return headers.map(h => {
-                let cell = (row[h] || '').toString();
+                let cell = (row[h] || row[h.charAt(0).toUpperCase() + h.slice(1).toLowerCase()] || '').toString();
                 if (cell.includes(',') || cell.includes('"') || cell.includes('\n')) {
                     cell = `"${cell.replace(/"/g, '""')}"`;
                 }
@@ -1016,7 +1287,18 @@ app.get('/api/merged/categories-count', async (req, res) => {
             }
         }
 
-        let csvFiles = fs.readdirSync(targetDir).filter(f => f.endsWith('.csv'));
+        let csvFilesAll = fs.readdirSync(targetDir).filter(f => f.endsWith('.csv'));
+        const seenCategories = new Set();
+        let csvFiles = [];
+        
+        // Deduplicate singular/plural versions in the same directory
+        for (const file of csvFilesAll) {
+            const norm = normalizeCategoryKey(file.replace('.csv', ''));
+            if (!seenCategories.has(norm)) {
+                seenCategories.add(norm);
+                csvFiles.push(file);
+            }
+        }
 
         // FAST PATH: If a specific category is requested, only scan that file
         if (lowerCategory) {
@@ -1154,7 +1436,7 @@ app.get('/api/merged/browse', async (req, res) => {
             if (!state && !city) {
                 // Return country-level categories
                 // First try to look for disk cache
-                const cacheFile = path.join(mergedDir, `_categories_cache.json`);
+                const cacheFile = path.join(mergedDir, `_categories_cache_v3.json`);
                 if (fs.existsSync(cacheFile)) {
                     try {
                         const cached = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
